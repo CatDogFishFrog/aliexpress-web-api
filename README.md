@@ -1,12 +1,6 @@
 # aliweb — неофіційний AliExpress Web API (каркас)
 
-Скрапінг AliExpress через [patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-python)
-(пропатчений Playwright, що не видає автоматизацію). Python **>= 3.14**.
-
-> **Стан: каркас (етап 1).** Готові: вхід/вихід, акаунти, зашифровані сесії, імпорт/експорт,
-> логування, діагностичні дампи, шарова архітектура, каркас API. **Ще немає:** реальних
-> екстракторів (пошук/товар/продавець — заглушки) і перевірки на живому сайті — див.
-> [`memory/11-open-questions.md`](memory/11-open-questions.md).
+Скрапінг AliExpress через [patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-python). Python **>= 3.14**.
 
 ## Встановлення
 
@@ -96,5 +90,3 @@ pytest                 # 170+ тестів, включно з архітекту
 ruff check . && ruff format --check .
 mypy                   # strict
 ```
-
-**Для AI-агентів і нових розробників починайте з [`AGENTS.md`](AGENTS.md) та [`memory/README.md`](memory/README.md).**
