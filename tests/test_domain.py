@@ -5,6 +5,7 @@ from decimal import Decimal
 import pytest
 
 from aliweb.domain.accounts import AccountId, Credentials, mask_login
+from aliweb.domain.browser import BrowserChoice, BrowserKind, LoginMode
 from aliweb.domain.catalog import (
     Product,
     ProductRef,
@@ -13,7 +14,7 @@ from aliweb.domain.catalog import (
     SimpleProduct,
     SortOrder,
 )
-from aliweb.domain.errors import InvalidAccountIdError
+from aliweb.domain.errors import InvalidAccountIdError, InvalidLoginModeError
 from aliweb.domain.secret import Secret
 from aliweb.domain.urls import InvalidEntityUrlError, canonicalize_url, extract_item_id
 
@@ -100,3 +101,32 @@ class TestCatalogModels:
         assert Product(summary=simple).ref == simple.ref
         assert simple.price is None and dict(simple.extra) == {}
         _ = Decimal  # моделі не вимагають заповнення необов'язкових полів
+
+
+class TestLoginMode:
+    def test_default_is_headless_bundled_chromium(self) -> None:
+        mode = LoginMode()
+        assert mode.headless and mode.browser.kind is BrowserKind.CHROMIUM and mode.browser.is_bundled
+
+    @pytest.mark.parametrize("kind", [BrowserKind.CHROME, BrowserKind.MSEDGE])
+    def test_headful_real_browsers_allowed(self, kind: BrowserKind) -> None:
+        assert LoginMode(headless=False, browser=BrowserChoice(kind)).browser.kind is kind
+
+    def test_headful_patchright_and_custom_allowed(self) -> None:
+        LoginMode(headless=False)
+        LoginMode(headless=False, browser=BrowserChoice.custom("/x/brave"))
+
+    @pytest.mark.parametrize(
+        "browser",
+        [BrowserChoice(BrowserKind.CHROME), BrowserChoice(BrowserKind.MSEDGE), BrowserChoice.custom("/x")],
+    )
+    def test_headless_only_on_patchright_browser(self, browser: BrowserChoice) -> None:
+        with pytest.raises(InvalidLoginModeError, match="--headful"):
+            LoginMode(headless=True, browser=browser)
+
+    def test_browser_choice_path_rules(self) -> None:
+        with pytest.raises(InvalidLoginModeError):
+            BrowserChoice(BrowserKind.CUSTOM)  # шлях обов'язковий
+        with pytest.raises(InvalidLoginModeError):
+            BrowserChoice(BrowserKind.CHROME, "/x")  # шлях лише для CUSTOM
+        assert str(BrowserChoice.custom("/x")) == "/x" and str(BrowserChoice()) == "chromium"

@@ -18,6 +18,7 @@ from pathlib import Path
 from aliweb.api import AliExpressWebApi
 from aliweb.bootstrap import build_api
 from aliweb.domain.accounts import AccountId, Credentials
+from aliweb.domain.browser import BrowserChoice, BrowserKind, LoginMode
 from aliweb.domain.errors import AliWebError, ConfigurationError
 from aliweb.domain.secret import Secret
 from aliweb.infrastructure.config import Settings
@@ -48,11 +49,28 @@ def build_parser() -> argparse.ArgumentParser:
     use = accounts.add_parser("use", help="зробити акаунт активним")
     use.add_argument("id")
 
-    login = sub.add_parser("login", help="увійти в акаунт")
+    login = sub.add_parser(
+        "login",
+        help="увійти в акаунт",
+        description=(
+            "Режим входу задається тут, а не в .env. Без прапорців — безголовий вхід у браузері "
+            "patchright (підходить для сервера без графіки). Браузер Chrome/Edge/власний доступний "
+            "лише з --headful."
+        ),
+    )
     login.add_argument("id")
-    mode = login.add_mutually_exclusive_group()
-    mode.add_argument("--headful", action="store_true", help="показати браузер")
-    mode.add_argument("--headless", action="store_true", help="примусово без вікна")
+    login.add_argument("--headful", action="store_true", help="показати вікно браузера")
+    browser = login.add_mutually_exclusive_group()
+    browser.add_argument(
+        "--browser",
+        choices=[kind.value for kind in BrowserKind if kind is not BrowserKind.CUSTOM],
+        help="браузер для входу (потрібен --headful): chromium = браузер patchright (за замовч.)",
+    )
+    browser.add_argument(
+        "--browser-path",
+        metavar="ШЛЯХ",
+        help="шлях до власного chromium-сумісного браузера (потрібен --headful)",
+    )
     login.add_argument("--fresh", action="store_true", help="ігнорувати збережену сесію")
     logout = sub.add_parser("logout", help="вийти (очистити сесію)")
     logout.add_argument("id")
@@ -89,11 +107,20 @@ def _passphrase(env_name: str | None) -> Secret | None:
 
 
 def _headless_override(args: argparse.Namespace) -> bool | None:
-    if getattr(args, "headful", False):
-        return False
-    if getattr(args, "headless", False):
-        return True
-    return None
+    """Режим СКРАПЕРА для debug/check: ``--headful`` → з вікном, інакше з .env (браузер patchright)."""
+    return False if getattr(args, "headful", False) else None
+
+
+def login_mode_from_args(args: argparse.Namespace) -> LoginMode:
+    """Режим входу з прапорців. Без прапорців — безголовий вхід у браузері patchright.
+
+    ``--browser``/``--browser-path`` без ``--headful`` відхиляються інваріантом ``LoginMode``.
+    """
+    if args.browser_path:
+        choice = BrowserChoice.custom(args.browser_path)
+    else:
+        choice = BrowserChoice(BrowserKind(args.browser or BrowserKind.CHROMIUM.value))
+    return LoginMode(headless=not args.headful, browser=choice)
 
 
 def _read_password(env_name: str | None) -> Secret:
@@ -129,9 +156,7 @@ async def _dispatch(api: AliExpressWebApi, args: argparse.Namespace) -> int:
             await api.accounts.set_active(AccountId.parse(args.id))
             print(f"Активний акаунт: {args.id}")
         case ("login", _):
-            await api.auth.login(
-                AccountId.parse(args.id), headless=_headless_override(args), fresh=args.fresh
-            )
+            await api.auth.login(AccountId.parse(args.id), mode=args.login_mode, fresh=args.fresh)
             print("Вхід виконано, сесію збережено")
         case ("logout", _):
             await api.auth.logout(AccountId.parse(args.id))
@@ -168,6 +193,9 @@ async def _run(args: argparse.Namespace) -> int:
     if args.group == "secret":
         print(secrets.token_urlsafe(32))
         return 0
+    if args.group == "login":
+        # Некоректні прапорці відхиляємо ДО будь-яких інших дій (ключ, сховище, браузер).
+        args.login_mode = login_mode_from_args(args)
     settings = Settings.from_env(dotenv_path=args.env_file)
     async with build_api(settings) as api:
         return await _dispatch(api, args)

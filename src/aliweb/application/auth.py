@@ -10,6 +10,7 @@ from aliweb.application.accounts import AccountService, Clock, utc_now
 from aliweb.application.ports.accounts import AccountRepository
 from aliweb.application.ports.auth import Authenticator, LoginRequest
 from aliweb.domain.accounts import AccountId, SessionState
+from aliweb.domain.browser import LoginMode
 from aliweb.domain.errors import AliWebError, MissingCredentialsError
 
 _log = logging.getLogger(__name__)
@@ -40,13 +41,12 @@ class AuthService:
         self._verified_at: dict[AccountId, float] = {}
 
     async def login(
-        self, account_id: AccountId, *, headless: bool | None = None, fresh: bool = False
+        self, account_id: AccountId, *, mode: LoginMode | None = None, fresh: bool = False
     ) -> SessionState:
         """Входить в акаунт та зберігає сесію.
 
         Args:
-            headless: ``None`` — з конфігурації; ``False`` — показати браузер (інколи
-                headless-вхід не пускає).
+            mode: режим і браузер входу (``LoginMode``); ``None`` — як у скрапера (з конфігурації).
             fresh: ігнорувати наявну сесію (вхід «з чистого аркуша»).
         """
         account = await self._accounts.get(account_id)
@@ -56,7 +56,7 @@ class AuthService:
             )
         previous = None if fresh or account.session is None else account.session.storage_state
         session = await self._auth.login(
-            LoginRequest(credentials=account.credentials, headless=headless, storage_state=previous)
+            LoginRequest(credentials=account.credentials, mode=mode, storage_state=previous)
         )
         await self._repo.save(account.with_session(session, now=self._clock()))
         self._verified_at[account_id] = self._monotonic()
@@ -82,8 +82,9 @@ class AuthService:
         """Повертає дійсну сесію: перевіряє наявну (з TTL-кешем) або входить заново."""
         account = await self._accounts.get(account_id)
         session = account.session
+        relogin_mode = None if headless is None else LoginMode(headless=headless)
         if session is None:
-            return await self.login(account_id, headless=headless)
+            return await self.login(account_id, mode=relogin_mode)
 
         verified = self._verified_at.get(account_id)
         if verified is not None and self._monotonic() - verified < self._verify_ttl_s:
@@ -94,7 +95,7 @@ class AuthService:
             return session
 
         _log.info("Збережена сесія недійсна — повторний вхід", extra={"account": str(account_id)})
-        return await self.login(account_id, headless=headless)
+        return await self.login(account_id, mode=relogin_mode)
 
     async def check(self, account_id: AccountId, *, headless: bool | None = None) -> bool:
         """Примусова перевірка збереженої сесії без повторного входу."""

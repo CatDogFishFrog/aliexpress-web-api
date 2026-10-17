@@ -7,6 +7,7 @@ from aliweb.application.auth import AuthService
 from aliweb.application.catalog import CatalogService
 from aliweb.application.transfer import SessionTransferService
 from aliweb.domain.accounts import AccountId, Credentials
+from aliweb.domain.browser import BrowserChoice, BrowserKind, LoginMode
 from aliweb.domain.catalog import (
     Product,
     ProductRef,
@@ -120,13 +121,14 @@ class TestAuthService:
         with pytest.raises(MissingCredentialsError):
             await self.make(accounts, repo, fake, [0]).login(A)
 
-    async def test_login_saves_session_and_passes_headless(
+    async def test_login_saves_session_and_passes_mode(
         self, accounts: AccountService, repo: MemoryRepository, fake: FakeAuthenticator
     ) -> None:
         await accounts.add(A, CREDS)
-        await self.make(accounts, repo, fake, [0]).login(A, headless=False)
+        mode = LoginMode(headless=False, browser=BrowserChoice(BrowserKind.MSEDGE))
+        await self.make(accounts, repo, fake, [0]).login(A, mode=mode)
         assert repo.items[A].session is not None
-        assert fake.login_calls[0].headless is False and fake.login_calls[0].storage_state is None
+        assert fake.login_calls[0].mode == mode and fake.login_calls[0].storage_state is None
 
     async def test_relogin_reuses_session_unless_fresh(
         self, accounts: AccountService, repo: MemoryRepository, fake: FakeAuthenticator
@@ -155,6 +157,22 @@ class TestAuthService:
         fake.valid = False
         await auth.ensure_session(A)  # недійсна → повторний вхід
         assert len(fake.login_calls) == 2
+
+    async def test_default_login_mode_is_none_scraper_mode(
+        self, accounts: AccountService, repo: MemoryRepository, fake: FakeAuthenticator
+    ) -> None:
+        await accounts.add(A, CREDS)
+        await self.make(accounts, repo, fake, [0]).login(A)
+        assert fake.login_calls[0].mode is None
+
+    async def test_auto_relogin_uses_scraper_browser_never_a_real_browser(
+        self, accounts: AccountService, repo: MemoryRepository, fake: FakeAuthenticator
+    ) -> None:
+        """Автоматичний повторний вхід під час скрапінгу — лише браузер patchright."""
+        await accounts.add(A, CREDS)
+        await self.make(accounts, repo, fake, [0]).ensure_session(A, headless=False)
+        mode = fake.login_calls[0].mode
+        assert mode == LoginMode(headless=False) and mode.browser.is_bundled
 
     async def test_logout_clears_session_even_if_remote_fails(
         self, accounts: AccountService, repo: MemoryRepository, fake: FakeAuthenticator

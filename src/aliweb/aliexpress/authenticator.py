@@ -34,7 +34,12 @@ class AliExpressAuthenticator:
         self._clock = clock
 
     async def login(self, request: LoginRequest) -> SessionState:
-        async with self._factory.open(request.storage_state, headless=request.headless) as session:
+        mode = request.mode
+        async with self._factory.open(
+            request.storage_state,
+            headless=mode.headless if mode else None,
+            browser=mode.browser if mode else None,
+        ) as session:
             await self._flow.run(session, request.credentials)
             return SessionState(storage_state=await session.storage_state(), captured_at=self._clock())
 

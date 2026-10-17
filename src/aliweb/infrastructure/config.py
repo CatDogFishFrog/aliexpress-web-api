@@ -36,8 +36,9 @@ class ProxySettings:
 
 @dataclass(frozen=True, slots=True)
 class BrowserSettings:
+    """Налаштування браузера СКРАПЕРА (завжди браузер patchright). Браузер для входу — див. LoginMode."""
+
     headless: bool = True
-    channel: str | None = None  # None = вбудований Chromium; "chrome" = встановлений Chrome
     locale: str = "en-US"
     timezone_id: str | None = None
     viewport: tuple[int, int] | None = (1366, 768)  # None = no_viewport
@@ -143,7 +144,6 @@ class Settings:
             session_secret=Secret(secret) if secret else None,
             browser=BrowserSettings(
                 headless=_to_bool("HEADLESS", get("HEADLESS"), True),
-                channel=get("BROWSER_CHANNEL"),
                 locale=get("LOCALE") or defaults.browser.locale,
                 timezone_id=get("TIMEZONE"),
                 viewport=_to_viewport(get("VIEWPORT"), defaults.browser.viewport),

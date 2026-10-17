@@ -12,6 +12,7 @@ from patchright.async_api import BrowserContext, Page
 from patchright.async_api import Error as PlaywrightError
 
 from aliweb.domain.accounts import StorageState
+from aliweb.domain.browser import BrowserChoice
 from aliweb.domain.errors import AliWebError, ScrapingError
 from aliweb.infrastructure.browser.pool import BrowserPool
 from aliweb.infrastructure.config import BrowserSettings
@@ -97,15 +98,21 @@ class BrowserSessionFactory:
 
     @asynccontextmanager
     async def open(
-        self, storage_state: StorageState | None = None, *, headless: bool | None = None
+        self,
+        storage_state: StorageState | None = None,
+        *,
+        headless: bool | None = None,
+        browser: BrowserChoice | None = None,
     ) -> AsyncIterator[BrowserSession]:
         """Відкриває ізольований контекст (cookie з ``storage_state``) і сторінку.
+
+        ``browser=None`` — браузер patchright (так працює скрапер); інший браузер лише для входу.
 
         При винятку: зберігає діагностику, додає до помилки примітку зі шляхом, а сторонні
         помилки patchright перетворює на :class:`ScrapingError`. Контекст завжди закривається.
         """
-        browser = await self._pool.get(headless)
-        context = await browser.new_context(**build_context_options(self._settings, storage_state))
+        launched = await self._pool.get(headless, browser)
+        context = await launched.new_context(**build_context_options(self._settings, storage_state))
         context.set_default_timeout(self._settings.action_timeout_ms)
         context.set_default_navigation_timeout(self._settings.nav_timeout_ms)
         recorder = NetworkRecorder(self._redactor)

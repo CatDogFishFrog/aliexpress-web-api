@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from aliweb.domain.browser import BrowserChoice, BrowserKind
 from aliweb.domain.errors import ConfigurationError, SecretMissingError
 from aliweb.domain.secret import Secret
 from aliweb.infrastructure.browser.pool import build_launch_options
@@ -81,10 +82,10 @@ class TestBrowserOptions:
         opts = build_launch_options(BrowserSettings(), headless=True)
         assert opts["headless"] is True and "channel" not in opts and "proxy" not in opts
 
-    def test_launch_with_channel_and_proxy(self) -> None:
-        settings = BrowserSettings(channel="chrome", proxy=ProxySettings("http://p:1", "u", Secret("pass1")))
+    def test_launch_with_proxy(self) -> None:
+        settings = BrowserSettings(proxy=ProxySettings("http://p:1", "u", Secret("pass1")))
         opts = build_launch_options(settings, headless=False)
-        assert opts["channel"] == "chrome" and opts["headless"] is False
+        assert opts["headless"] is False and "channel" not in opts
         assert opts["proxy"] == {"server": "http://p:1", "username": "u", "password": "pass1"}
 
     def test_context_options(self) -> None:
@@ -145,3 +146,39 @@ class TestLogging:
         with pytest.raises(ValueError, match="рівень"):
             configure_logging(LoggingSettings(level="LOUD"), logs_dir=tmp_path, redactor=Redactor())
         logging.getLogger("aliweb").handlers.clear()
+
+
+class TestLaunchOptionsPerBrowser:
+    """Вибір браузера для входу відображається на параметри запуску patchright."""
+
+    @pytest.mark.parametrize(
+        ("choice", "expected"),
+        [
+            (BrowserChoice(), {}),
+            (BrowserChoice(BrowserKind.CHROME), {"channel": "chrome"}),
+            (BrowserChoice(BrowserKind.MSEDGE), {"channel": "msedge"}),
+            (BrowserChoice.custom("/opt/brave/brave"), {"executable_path": "/opt/brave/brave"}),
+        ],
+    )
+    def test_mapping(self, choice: BrowserChoice, expected: dict[str, str]) -> None:
+        opts = build_launch_options(BrowserSettings(), headless=False, browser=choice)
+        for key in ("channel", "executable_path"):
+            assert opts.get(key) == expected.get(key)
+
+    def test_default_browser_is_bundled_chromium(self) -> None:
+        opts = build_launch_options(BrowserSettings(), headless=True)
+        assert "channel" not in opts and "executable_path" not in opts
+
+    def test_browser_is_not_configurable_via_env(self) -> None:
+        """Скрапер завжди на браузері patchright: змінних вибору браузера немає."""
+        env = {"ALIWEB_BROWSER_CHANNEL": "chrome", "ALIWEB_HEADFUL_CHANNEL": "msedge"}
+        settings = Settings.from_env(env, dotenv_path=None)
+        opts = build_launch_options(settings.browser, headless=False)
+        assert "channel" not in opts
+
+    def test_missing_executable_gives_clear_error(self) -> None:
+        from aliweb.infrastructure.browser.pool import check_executable_exists
+
+        with pytest.raises(ConfigurationError, match="не знайдено"):
+            check_executable_exists("/definitely/not/here")
+        check_executable_exists(None)

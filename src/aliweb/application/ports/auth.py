@@ -4,18 +4,19 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from aliweb.domain.accounts import Credentials, SessionState, StorageState
+from aliweb.domain.browser import LoginMode
 
 
 @dataclass(frozen=True, slots=True)
 class LoginRequest:
     """Запит на вхід.
 
-    ``headless=None`` — використати значення з конфігурації. ``storage_state`` — попередні
-    cookie (AliExpress тоді може запитати лише пароль).
+    ``mode=None`` — режим скрапера з конфігурації (браузер patchright). ``storage_state`` —
+    попередні cookie (AliExpress тоді може запитати лише пароль).
     """
 
     credentials: Credentials
-    headless: bool | None = None
+    mode: LoginMode | None = None
     storage_state: StorageState | None = None
 
 

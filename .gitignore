@@ -10,4 +10,4 @@ data/
 dist/
 build/
 *.egg-info/
-skills-lock.json
+.agents/

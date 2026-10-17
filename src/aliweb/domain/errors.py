@@ -22,6 +22,10 @@ class ConfigurationError(AliWebError):
     """Некоректна або неповна конфігурація."""
 
 
+class InvalidLoginModeError(ConfigurationError):
+    """Недопустима комбінація режиму/браузера для входу."""
+
+
 class SecretMissingError(ConfigurationError):
     """Не задано (або надто короткий) ключ шифрування ALIWEB_SESSION_SECRET."""
 

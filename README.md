@@ -1,25 +1,55 @@
 # aliweb — неофіційний AliExpress Web API (каркас)
 
-Скрапінг AliExpress через [patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-python). Python **>= 3.14**.
+Скрапінг AliExpress через [patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-python)
+(пропатчений Playwright, що не видає автоматизацію). Python **>= 3.14**.
+
+> **Стан: каркас (етап 1).** Готові: вхід/вихід, акаунти, зашифровані сесії, імпорт/експорт,
+> логування, діагностичні дампи, шарова архітектура, каркас API. **Ще немає:** реальних
+> екстракторів (пошук/товар/продавець — заглушки) і перевірки на живому сайті — див.
+> [`memory/11-open-questions.md`](memory/11-open-questions.md).
 
 ## Встановлення
 
 ```bash
 uv venv --python 3.14 && source .venv/bin/activate     # або python3.14 -m venv .venv
 uv pip install -e ".[dev]"
-patchright install chromium                            # або встановіть Google Chrome (channel=chrome)
+patchright install chromium                            # браузер patchright: потрібен скраперу завжди
 cp .env.example .env
 aliweb secret generate                                 # вставте результат у ALIWEB_SESSION_SECRET
 ```
 
 > Збережіть `ALIWEB_SESSION_SECRET` окремо: без нього акаунти та `.bin`-файли не розшифрувати.
 
+## Браузери
+
+| Що | Який браузер | Де задається |
+|---|---|---|
+| **Скрапер** (робота API) | **Завжди браузер patchright** (`patchright install chromium`) | режим безголовий/з вікном — `ALIWEB_HEADLESS` у `.env` |
+| **Вхід в акаунт** | на вибір — під час запуску логіну | прапорці `aliweb login` |
+
+Вхід (`aliweb login <id> …`):
+
+```bash
+aliweb login main                                  # безголовий, браузер patchright (сервер лише з терміналом)
+aliweb login main --headful                        # з вікном, браузер patchright
+aliweb login main --headful --browser chrome       # з вікном, встановлений Google Chrome
+aliweb login main --headful --browser msedge       # з вікном, встановлений Microsoft Edge
+aliweb login main --headful --browser-path "C:\Program Files\Brave\brave.exe"   # власний chromium-сумісний
+```
+
+- Безголовий вхід **лише** в браузері patchright; `--browser`/`--browser-path` без `--headful` дають помилку.
+- Chrome/Edge/власний браузер повинні бути встановлені в системі, завантажувати їх через patchright не треба.
+- Після входу сесія зберігається, а скрапінг далі йде в браузері patchright з цими cookie.
+  Якщо AliExpress реагуватиме на різницю браузерів (розлогін/капча) — входьте з `--browser chromium`.
+- Сервер без графіки: увійдіть `--headful` на Windows, зробіть `aliweb session export`, перенесіть `.bin`
+  на сервер і `aliweb session import`.
+
 ## Швидкий старт (CLI)
 
 ```bash
 aliweb accounts add main --login me@mail.com           # пароль запитає інтерактивно
-aliweb login main                                      # headless за замовчуванням
-aliweb login main --headful                            # якщо headless не пускає — з вікном
+aliweb login main                                      # безголовий вхід (браузер patchright)
+aliweb login main --headful --browser msedge           # з вікном у Edge — див. розділ «Браузери»
 aliweb accounts list                                   # * — активний акаунт
 aliweb accounts use other                              # перемкнути активний
 aliweb accounts rename main shop                       # назви-ідентифікатори
@@ -66,3 +96,5 @@ pytest                 # 170+ тестів, включно з архітекту
 ruff check . && ruff format --check .
 mypy                   # strict
 ```
+
+**Для AI-агентів і нових розробників починайте з [`AGENTS.md`](AGENTS.md) та [`memory/README.md`](memory/README.md).**
