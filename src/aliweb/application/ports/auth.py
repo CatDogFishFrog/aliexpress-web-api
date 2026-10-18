@@ -12,18 +12,27 @@ class LoginRequest:
     """Запит на вхід.
 
     ``mode=None`` — режим скрапера з конфігурації (браузер patchright). ``storage_state`` —
-    попередні cookie (AliExpress тоді може запитати лише пароль).
+    попередні cookie (AliExpress тоді може запитати лише пароль). ``credentials`` можуть бути
+    ``None`` лише для ручного входу (``mode.manual``).
     """
 
-    credentials: Credentials
+    credentials: Credentials | None
     mode: LoginMode | None = None
     storage_state: StorageState | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class LoginResult:
+    """Результат входу. ``already_authenticated`` — сайт одразу визнав сесію дійсною (вхід не потрібен)."""
+
+    session: SessionState
+    already_authenticated: bool = False
 
 
 class Authenticator(Protocol):
     """Виконує вхід/перевірку/вихід на конкретному сайті. Браузер — деталь реалізації."""
 
-    async def login(self, request: LoginRequest) -> SessionState:
+    async def login(self, request: LoginRequest) -> LoginResult:
         """Raises:
         AuthenticationError: нащадки (ризик-контроль, капча, 2FA тощо).
         """

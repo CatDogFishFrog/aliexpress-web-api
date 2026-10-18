@@ -8,7 +8,7 @@ from collections.abc import Callable
 
 from aliweb.application.accounts import AccountService, Clock, utc_now
 from aliweb.application.ports.accounts import AccountRepository
-from aliweb.application.ports.auth import Authenticator, LoginRequest
+from aliweb.application.ports.auth import Authenticator, LoginRequest, LoginResult
 from aliweb.domain.accounts import AccountId, SessionState
 from aliweb.domain.browser import LoginMode
 from aliweb.domain.errors import AliWebError, MissingCredentialsError
@@ -42,26 +42,37 @@ class AuthService:
 
     async def login(
         self, account_id: AccountId, *, mode: LoginMode | None = None, fresh: bool = False
-    ) -> SessionState:
+    ) -> LoginResult:
         """Входить в акаунт та зберігає сесію.
 
         Args:
             mode: режим і браузер входу (``LoginMode``); ``None`` — як у скрапера (з конфігурації).
+                Для ручного входу (``mode.manual``) облікові дані не потрібні.
             fresh: ігнорувати наявну сесію (вхід «з чистого аркуша»).
+
+        Returns:
+            ``LoginResult``; ``already_authenticated=True``, якщо сайт одразу визнав збережену
+            сесію дійсною (повторний вхід не виконувався).
         """
         account = await self._accounts.get(account_id)
-        if account.credentials is None:
+        manual = mode is not None and mode.manual
+        if account.credentials is None and not manual:
             raise MissingCredentialsError(
-                f"В акаунті {account_id} не збережено логін/пароль — вхід неможливий"
+                f"В акаунті {account_id} не збережено логін/пароль — автоматичний вхід неможливий. "
+                "Задайте їх (`aliweb accounts update`) або увійдіть вручну: "
+                "`aliweb login <id> --headful --manual`"
             )
         previous = None if fresh or account.session is None else account.session.storage_state
-        session = await self._auth.login(
+        result = await self._auth.login(
             LoginRequest(credentials=account.credentials, mode=mode, storage_state=previous)
         )
-        await self._repo.save(account.with_session(session, now=self._clock()))
+        await self._repo.save(account.with_session(result.session, now=self._clock()))
         self._verified_at[account_id] = self._monotonic()
-        _log.info("Вхід виконано", extra={"account": str(account_id)})
-        return session
+        _log.info(
+            "Вхід виконано",
+            extra={"account": str(account_id), "already_authenticated": result.already_authenticated},
+        )
+        return result
 
     async def logout(self, account_id: AccountId) -> None:
         """Вихід: best-effort на сайті + гарантоване очищення сесії у сховищі."""
@@ -84,7 +95,7 @@ class AuthService:
         session = account.session
         relogin_mode = None if headless is None else LoginMode(headless=headless)
         if session is None:
-            return await self.login(account_id, mode=relogin_mode)
+            return (await self.login(account_id, mode=relogin_mode)).session
 
         verified = self._verified_at.get(account_id)
         if verified is not None and self._monotonic() - verified < self._verify_ttl_s:
@@ -95,7 +106,7 @@ class AuthService:
             return session
 
         _log.info("Збережена сесія недійсна — повторний вхід", extra={"account": str(account_id)})
-        return await self.login(account_id, mode=relogin_mode)
+        return (await self.login(account_id, mode=relogin_mode)).session
 
     async def check(self, account_id: AccountId, *, headless: bool | None = None) -> bool:
         """Примусова перевірка збереженої сесії без повторного входу."""

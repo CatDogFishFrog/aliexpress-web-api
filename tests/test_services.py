@@ -174,6 +174,30 @@ class TestAuthService:
         mode = fake.login_calls[0].mode
         assert mode == LoginMode(headless=False) and mode.browser.is_bundled
 
+    async def test_manual_login_does_not_need_credentials(
+        self, accounts: AccountService, repo: MemoryRepository, fake: FakeAuthenticator
+    ) -> None:
+        await accounts.add(A)  # акаунт без логіну/пароля
+        mode = LoginMode(headless=False, manual=True)
+        result = await self.make(accounts, repo, fake, [0]).login(A, mode=mode)
+        assert result.session is not None and repo.items[A].session is not None
+        assert fake.login_calls[0].credentials is None and fake.login_calls[0].mode == mode
+
+    async def test_automatic_login_without_credentials_suggests_manual(
+        self, accounts: AccountService, repo: MemoryRepository, fake: FakeAuthenticator
+    ) -> None:
+        await accounts.add(A)
+        with pytest.raises(MissingCredentialsError, match="--manual"):
+            await self.make(accounts, repo, fake, [0]).login(A)
+
+    async def test_already_authenticated_is_reported(
+        self, accounts: AccountService, repo: MemoryRepository, fake: FakeAuthenticator
+    ) -> None:
+        await accounts.add(A, CREDS)
+        fake.already_authenticated = True
+        result = await self.make(accounts, repo, fake, [0]).login(A)
+        assert result.already_authenticated and repo.items[A].session is not None
+
     async def test_logout_clears_session_even_if_remote_fails(
         self, accounts: AccountService, repo: MemoryRepository, fake: FakeAuthenticator
     ) -> None:

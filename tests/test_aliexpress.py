@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from aliweb.aliexpress.navigation import CHALLENGE_URL_RE
-from aliweb.aliexpress.session_probe import looks_like_login_url
+from aliweb.aliexpress.pages import (
+    is_captcha_frame_url,
+    looks_like_challenge_url,
+    looks_like_login_url,
+)
 from aliweb.aliexpress.signals import (
     LOGIN_RESPONSE_URL_RE,
     classify_login_ret,
@@ -49,11 +52,41 @@ class TestSignals:
         assert not LOGIN_RESPONSE_URL_RE.search("https://x/user/buyer/login/loginByPwdReport")
 
 
-def test_url_heuristics() -> None:
-    assert looks_like_login_url("https://login.aliexpress.com/?x=1")
-    assert looks_like_login_url("https://passport.aliexpress.com/")
-    assert not looks_like_login_url("https://www.aliexpress.com/item/1.html")
-    assert CHALLENGE_URL_RE.search("https://x/punish?x5secdata=1")
+class TestPageUrls:
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://login.aliexpress.com/?x=1",
+            "https://passport.aliexpress.com/",
+            "https://www.aliexpress.com/p/ug-login-page/login.html",
+            "https://www.aliexpress.com/sign-in",
+        ],
+    )
+    def test_login_urls(self, url: str) -> None:
+        assert looks_like_login_url(url)
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://www.aliexpress.com/",
+            "https://www.aliexpress.com/item/1005001.html",
+            "https://www.aliexpress.com/item/1.html?redirectUrl=%2Flogin",  # «login» лише в query
+            "about:blank",
+        ],
+    )
+    def test_not_login_urls(self, url: str) -> None:
+        assert not looks_like_login_url(url)
+
+    def test_challenge_urls(self) -> None:
+        assert looks_like_challenge_url("https://x/punish?x5secdata=1")
+        assert looks_like_challenge_url(
+            "https://login.aliexpress.com//user/buyer/login/loginByPwd/_____tmd_____/punish?a=1"
+        )
+        assert not looks_like_challenge_url("https://www.aliexpress.com/item/1.html")
+
+    def test_captcha_frame_url(self) -> None:
+        url = "https://login.aliexpress.com:443//user/buyer/login/loginByPwd/_____tmd_____/punish?x5step=2&action=captcha"
+        assert is_captcha_frame_url(url) and not is_captcha_frame_url("https://www.google.com/ccm/collect")
 
 
 def test_slider_easing_is_monotonic_and_bounded() -> None:

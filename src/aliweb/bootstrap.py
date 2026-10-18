@@ -15,6 +15,7 @@ from aliweb.aliexpress.extractors.placeholders import (
 )
 from aliweb.aliexpress.gateways import ScrapingCatalogGateway, ScrapingSellerGateway
 from aliweb.aliexpress.login_flow import PasswordLoginFlow
+from aliweb.aliexpress.manual_flow import ManualLoginFlow
 from aliweb.aliexpress.selectors import SELECTORS
 from aliweb.aliexpress.session_probe import SessionProbe
 from aliweb.aliexpress.slider import SliderSolver
@@ -25,7 +26,7 @@ from aliweb.application.auth import AuthService
 from aliweb.application.catalog import CatalogService, SellerService
 from aliweb.application.ports.auth import TwoFactorPrompt
 from aliweb.application.transfer import SessionTransferService
-from aliweb.infrastructure.browser.debugger import ProviderPageDebugger
+from aliweb.infrastructure.browser.debugger import AccountSessionDebugger
 from aliweb.infrastructure.browser.page_provider import AuthenticatedPageProvider
 from aliweb.infrastructure.browser.pool import BrowserPool
 from aliweb.infrastructure.browser.session import BrowserSessionFactory
@@ -69,17 +70,17 @@ def build_api(
     sessions = BrowserSessionFactory(pool, settings.browser, diagnostics, redactor)
 
     # ── адаптер AliExpress ──
+    probe = SessionProbe(SELECTORS.login, settings.aliexpress)
     flow = PasswordLoginFlow(
         SELECTORS.login,
         SliderSolver(SELECTORS.login),
         two_factor or ConsoleTwoFactorPrompt(),
         settings.aliexpress,
         redactor,
-        selector_timeout_ms=settings.browser.action_timeout_ms,
+        settings.human,
     )
-    authenticator = AliExpressAuthenticator(
-        sessions, flow, SessionProbe(SELECTORS.login, settings.aliexpress), settings.aliexpress
-    )
+    manual_flow = ManualLoginFlow(SELECTORS.login, probe, settings.aliexpress)
+    authenticator = AliExpressAuthenticator(sessions, flow, manual_flow, probe, settings.aliexpress)
 
     # ── прикладні сервіси ──
     accounts = AccountService(repository, active_store)
@@ -101,6 +102,6 @@ def build_api(
         transfer=transfer,
         catalog=CatalogService(catalog_gateway),
         sellers=SellerService(seller_gateway),
-        debug=ProviderPageDebugger(provider, diagnostics),
+        debug=AccountSessionDebugger(accounts, sessions, diagnostics),
         _close=pool.aclose,
     )

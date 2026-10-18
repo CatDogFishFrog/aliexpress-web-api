@@ -130,3 +130,21 @@ class TestLoginMode:
         with pytest.raises(InvalidLoginModeError):
             BrowserChoice(BrowserKind.CHROME, "/x")  # шлях лише для CUSTOM
         assert str(BrowserChoice.custom("/x")) == "/x" and str(BrowserChoice()) == "chromium"
+
+
+class TestManualLoginMode:
+    def test_manual_requires_a_window(self) -> None:
+        with pytest.raises(InvalidLoginModeError, match="--headful"):
+            LoginMode(headless=True, manual=True)
+
+    @pytest.mark.parametrize("kind", [BrowserKind.CHROMIUM, BrowserKind.CHROME, BrowserKind.MSEDGE])
+    def test_manual_allowed_with_any_real_window(self, kind: BrowserKind) -> None:
+        mode = LoginMode(headless=False, browser=BrowserChoice(kind), manual=True, manual_timeout_s=120)
+        assert mode.manual and mode.manual_timeout_s == 120
+
+    def test_timeout_must_be_positive(self) -> None:
+        with pytest.raises(InvalidLoginModeError):
+            LoginMode(headless=False, manual=True, manual_timeout_s=0)
+
+    def test_default_is_not_manual(self) -> None:
+        assert LoginMode().manual is False

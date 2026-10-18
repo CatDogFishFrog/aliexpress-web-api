@@ -1,48 +1,62 @@
-"""Перевірка, чи збережена сесія досі автентифікована."""
+"""Перевірка, чи збережена сесія досі автентифікована.
+
+Метод (підтверджено дампами): для авторизованого акаунта сторінка входу завантажується й
+через ~0,3 с клієнтським скриптом перекидає на головну. Тому «відкрили сторінку входу й нас
+перекинуло геть» ⇔ сесія дійсна. Самі cookie про це не свідчать (``xman_us_t`` переживає сесію).
+"""
 
 from __future__ import annotations
 
-import contextlib
-import re
+import logging
 
+from patchright.async_api import BrowserContext, Page
+
+from aliweb.aliexpress.login_screen import LoginScreen, wait_for_screen
 from aliweb.aliexpress.selectors import LoginSelectors
 from aliweb.domain.errors import CaptchaChallengeError
 from aliweb.infrastructure.browser.session import BrowserSession
 from aliweb.infrastructure.config import AliExpressSettings
 
-LOGIN_URL_RE = re.compile(r"login|sign-?in|passport", re.IGNORECASE)
-CHALLENGE_URL_RE = re.compile(r"punish|captcha|_____tmd_____", re.IGNORECASE)
-
-
-def looks_like_login_url(url: str) -> bool:
-    return bool(LOGIN_URL_RE.search(url))
+_log = logging.getLogger(__name__)
+_DECISIVE = {
+    LoginScreen.AUTHENTICATED,
+    LoginScreen.LANDING,
+    LoginScreen.ACCOUNT_STEP,
+    LoginScreen.PASSWORD_STEP,
+    LoginScreen.CAPTCHA,
+}
 
 
 class SessionProbe:
-    """Відкриває сторінку, що вимагає входу, і дивиться, чи не перекинуло на логін.
-
-    Самі cookie про дійсність не свідчать (``xman_us_t`` переживає сесію), тому перевірка —
-    навігаційна. Адреса задається ``ALIWEB_SESSION_PROBE_URL`` (див. memory/11 — потребує
-    підтвердження на живому сайті).
-    """
-
     def __init__(self, selectors: LoginSelectors, settings: AliExpressSettings) -> None:
         self._sel = selectors
         self._settings = settings
 
-    async def is_authenticated(self, session: BrowserSession) -> bool:
-        page = session.page
-        await page.goto(self._settings.session_probe_url, wait_until="domcontentloaded")
-        with contextlib.suppress(Exception):
-            await page.wait_for_load_state("networkidle", timeout=5000)
-        await session.checkpoint("session_probe")
+    @property
+    def _probe_url(self) -> str:
+        return self._settings.session_probe_url or self._settings.login_url
 
-        if CHALLENGE_URL_RE.search(page.url):
+    async def check_page(self, page: Page, *, timeout_s: float = 8.0) -> bool:
+        """Відкриває сторінку перевірки на ``page`` і каже, чи сесія дійсна."""
+        await page.goto(self._probe_url, wait_until="domcontentloaded")
+        screen = await wait_for_screen(page, self._sel, accept=_DECISIVE, timeout_s=timeout_s)
+        _log.debug("Перевірка сесії", extra={"screen": screen.value})
+        if screen is LoginScreen.CAPTCHA:
             raise CaptchaChallengeError("Під час перевірки сесії показано антибот-сторінку")
-        if looks_like_login_url(page.url):
-            return False
-        for selector in (self._sel.username_input, self._sel.password_input):
-            element = await page.query_selector(selector)
-            if element is not None and await element.is_visible():
-                return False
-        return True
+        return screen is LoginScreen.AUTHENTICATED
+
+    async def check_in_context(self, context: BrowserContext) -> bool:
+        """Перевірка в НОВІЙ вкладці того ж контексту — не чіпає сторінку, з якою працює людина."""
+        page = await context.new_page()
+        try:
+            return await self.check_page(page)
+        finally:
+            try:
+                await page.close()
+            except Exception:
+                _log.debug("Не вдалося закрити вкладку перевірки", exc_info=True)
+
+    async def is_authenticated(self, session: BrowserSession) -> bool:
+        result = await self.check_page(session.page)
+        await session.checkpoint("session_probe")
+        return result

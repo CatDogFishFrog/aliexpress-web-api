@@ -60,3 +60,35 @@ class TestLoginModeFromArgs:
     def test_rejection_is_friendly_cli_error(self, capsys: pytest.CaptureFixture[str]) -> None:
         assert main(["login", "main", "--browser", "msedge"]) == 1
         assert "--headful" in capsys.readouterr().err
+
+
+class TestManualAndDebugFlags:
+    def test_manual_mode_mapping(self) -> None:
+        mode = mode_for("--headful", "--browser", "msedge", "--manual", "--manual-timeout", "90")
+        assert mode == LoginMode(
+            headless=False, browser=BrowserChoice(BrowserKind.MSEDGE), manual=True, manual_timeout_s=90
+        )
+
+    def test_manual_without_headful_is_rejected(self) -> None:
+        with pytest.raises(InvalidLoginModeError, match="--headful"):
+            mode_for("--manual")
+
+    def test_manual_rejection_is_friendly_cli_error(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["login", "main", "--manual"]) == 1
+        assert "--headful" in capsys.readouterr().err
+
+    def test_debug_open_options(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["debug", "open", "https://x", "--account", "b"])
+        assert args.account == "b" and not args.anonymous
+        assert parser.parse_args(["debug", "open", "https://x", "--anonymous"]).anonymous
+        with pytest.raises(SystemExit):
+            parser.parse_args(["debug", "open", "https://x", "--account", "b", "--anonymous"])
+
+    def test_accounts_add_login_is_optional_and_update_exists(self) -> None:
+        parser = build_parser()
+        assert parser.parse_args(["accounts", "add", "manualonly"]).login is None
+        args = parser.parse_args(["accounts", "update", "main", "--login", "new@mail.com"])
+        assert args.cmd == "update" and args.login == "new@mail.com"
+        with pytest.raises(SystemExit):
+            parser.parse_args(["accounts", "update", "main"])  # --login обов'язковий

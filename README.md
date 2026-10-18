@@ -1,7 +1,5 @@
 # aliweb — неофіційний AliExpress Web API (каркас)
 
-Скрапінг AliExpress через [patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-python). Python **>= 3.14**.
-
 ## Встановлення
 
 ```bash
@@ -42,8 +40,8 @@ aliweb login main --headful --browser-path "C:\Program Files\Brave\brave.exe"   
 
 ```bash
 aliweb accounts add main --login me@mail.com           # пароль запитає інтерактивно
-aliweb login main                                      # безголовий вхід (браузер patchright)
-aliweb login main --headful --browser msedge           # з вікном у Edge — див. розділ «Браузери»
+aliweb accounts add manual-only                        # акаунт БЕЗ облікових даних (для ручного входу)
+aliweb accounts update main --login new@mail.com       # змінити логін/пароль існуючого акаунта
 aliweb accounts list                                   # * — активний акаунт
 aliweb accounts use other                              # перемкнути активний
 aliweb accounts rename main shop                       # назви-ідентифікатори
@@ -52,8 +50,37 @@ aliweb session export main main.bin                    # без пароля; --
 aliweb session export main main.bin --passphrase-env MY_PHRASE   # окрема парольна фраза
 aliweb session import main.bin --as copy --overwrite
 aliweb logout main
-aliweb debug open "https://www.aliexpress.com/..."     # відкрити URL активним акаунтом + дамп
 ```
+
+### Вхід в акаунт
+
+```bash
+aliweb login main                                  # автоматично, безголовий, браузер patchright
+aliweb login main --headful                        # автоматично, з вікном
+aliweb login main --headful --browser msedge       # автоматично, у Microsoft Edge
+aliweb login main --headful --manual               # РУЧНИЙ: ви входите самі, програма чекає
+aliweb login main --headful --browser chrome --manual --manual-timeout 900
+aliweb login main --fresh                          # ігнорувати збережену сесію
+```
+
+- Автоматичний вхід **людиноподібний**: набір по символах, рухи миші по кривих, природні кліки й скрол
+  (`ALIWEB_HUMAN_INPUT`, `ALIWEB_HUMAN_SPEED` у `.env`).
+- Якщо акаунт уже авторизований, команда скаже про це й нічого не робитиме (`--fresh` — примусовий новий вхід).
+- Якщо AliExpress показує слайдер-капчу, програма проходить її сама (кілька спроб). Якщо автоматика не допомагає,
+  використайте `--manual`.
+- `--manual`: автоматизацію вимкнено. Програма відкриває сторінку входу й чекає, поки ви увійдете (капча, пасскі, QR, соцмережі — що завгодно).
+  Коли вхід підтверджено, вона забирає сесію й **закриває браузер**. Потрібен `--headful`; пароль у акаунті не обов'язковий.
+  Закрили вікно раніше, ніж увійшли — сесію не збережено.
+
+### Дебаг сторінок
+
+```bash
+aliweb debug open "https://www.aliexpress.com/"             # як є: з сесією активного акаунта, якщо вона є, інакше анонімно
+aliweb debug open "https://www.aliexpress.com/" --anonymous # без cookie
+aliweb debug open "https://www.aliexpress.com/" --account second --headful
+```
+
+`debug open` **не входить** в акаунт, не перевіряє сесію й не змінює її. Це швидкий огляд того, що зараз бачить скрапер.
 
 ## Використання як бібліотеки
 

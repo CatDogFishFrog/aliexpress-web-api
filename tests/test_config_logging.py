@@ -182,3 +182,22 @@ class TestLaunchOptionsPerBrowser:
         with pytest.raises(ConfigurationError, match="не знайдено"):
             check_executable_exists("/definitely/not/here")
         check_executable_exists(None)
+
+
+class TestHumanSettings:
+    def test_defaults_enabled(self) -> None:
+        s = Settings.from_env({}, dotenv_path=None)
+        assert s.human.enabled is True and s.human.speed == 1.0
+
+    def test_parsing(self) -> None:
+        s = Settings.from_env({"ALIWEB_HUMAN_INPUT": "false", "ALIWEB_HUMAN_SPEED": "1.5"}, dotenv_path=None)
+        assert s.human.enabled is False and s.human.speed == 1.5
+
+    @pytest.mark.parametrize("value", ["fast", "0.1", "9"])
+    def test_invalid_speed_rejected(self, value: str) -> None:
+        with pytest.raises(ConfigurationError):
+            Settings.from_env({"ALIWEB_HUMAN_SPEED": value}, dotenv_path=None)
+
+    def test_probe_url_defaults_to_login_page(self) -> None:
+        s = Settings.from_env({}, dotenv_path=None)
+        assert s.aliexpress.session_probe_url is None

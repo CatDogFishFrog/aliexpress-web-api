@@ -7,7 +7,7 @@ import logging
 
 from patchright.async_api import Error as PlaywrightError
 
-from aliweb.aliexpress.session_probe import CHALLENGE_URL_RE, looks_like_login_url
+from aliweb.aliexpress.pages import looks_like_challenge_url, looks_like_login_url
 from aliweb.domain.errors import CaptchaChallengeError, NavigationError, SessionExpiredError
 from aliweb.infrastructure.browser.session import BrowserSession
 
@@ -38,7 +38,7 @@ async def open_checked(
         raise NavigationError(f"Не вдалося відкрити {url}: {last_error}") from last_error
 
     final_url = session.page.url
-    if CHALLENGE_URL_RE.search(final_url):
+    if looks_like_challenge_url(final_url):
         raise CaptchaChallengeError(f"Антибот-сторінка замість {url}")
     if looks_like_login_url(final_url) and not looks_like_login_url(url):
         raise SessionExpiredError(f"Сесія недійсна: {url} перекинуло на {final_url}")

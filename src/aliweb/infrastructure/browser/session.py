@@ -13,7 +13,7 @@ from patchright.async_api import Error as PlaywrightError
 
 from aliweb.domain.accounts import StorageState
 from aliweb.domain.browser import BrowserChoice
-from aliweb.domain.errors import AliWebError, ScrapingError
+from aliweb.domain.errors import AliWebError, BrowserClosedError, ScrapingError
 from aliweb.infrastructure.browser.pool import BrowserPool
 from aliweb.infrastructure.config import BrowserSettings
 from aliweb.infrastructure.diagnostics.collector import DiagnosticsCollector
@@ -21,6 +21,11 @@ from aliweb.infrastructure.diagnostics.network_log import NetworkRecorder
 from aliweb.infrastructure.redaction import Redactor
 
 _log = logging.getLogger(__name__)
+
+
+def is_target_closed(error: BaseException) -> bool:
+    """Чи помилка означає, що сторінку/контекст/браузер закрито (напр. користувач закрив вікно)."""
+    return type(error).__name__ == "TargetClosedError"
 
 
 def build_context_options(settings: BrowserSettings, storage_state: StorageState | None) -> dict[str, Any]:
@@ -75,6 +80,8 @@ class BrowserSession:
         await self._diagnostics.capture(self.page, reason=reason, recorder=self.recorder)
 
     async def on_error(self, error: BaseException) -> None:
+        if self.page.is_closed():
+            return  # вікно закрито — знімати вже нічого, дамп лише засмітить теку
         path = await self._diagnostics.on_error(self.page, error, self.recorder)
         if path is None:
             return
@@ -129,6 +136,11 @@ class BrowserSessionFactory:
             yield session
         except Exception as exc:
             await session.on_error(exc)
+            if isinstance(exc, PlaywrightError) and is_target_closed(exc):
+                raise BrowserClosedError(
+                    "Вікно браузера закрито до завершення операції. "
+                    "Не закривайте його вручну, поки програма працює."
+                ) from exc
             if isinstance(exc, PlaywrightError):
                 converted = ScrapingError(f"{type(exc).__name__}: {exc}")
                 converted.diagnostics_dir = next(

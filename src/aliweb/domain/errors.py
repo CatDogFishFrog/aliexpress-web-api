@@ -104,9 +104,17 @@ class SessionExpiredError(AuthenticationError):
     """Збережена сесія вже недійсна."""
 
 
+class ManualLoginTimeoutError(AuthenticationError):
+    """Ручний вхід не завершено за відведений час."""
+
+
 # ── Скрапінг ───────────────────────────────────────────────────────────────
 class ScrapingError(AliWebError):
     """Базова помилка скрапінгу."""
+
+
+class BrowserClosedError(ScrapingError):
+    """Вікно/сторінку браузера закрито до завершення операції (напр. користувачем)."""
 
 
 class NavigationError(ScrapingError):

@@ -38,8 +38,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add = accounts.add_parser("add", help="додати акаунт")
     add.add_argument("id")
-    add.add_argument("--login", required=True, help="e-mail або телефон")
+    add.add_argument(
+        "--login",
+        help="e-mail або телефон; без нього акаунт створюється без облікових даних "
+        "(для ручного входу: login --headful --manual)",
+    )
     add.add_argument("--password-env", help="змінна середовища з паролем (інакше — інтерактивний запит)")
+    update = accounts.add_parser("update", help="змінити логін/пароль існуючого акаунта")
+    update.add_argument("id")
+    update.add_argument("--login", required=True, help="новий e-mail або телефон")
+    update.add_argument("--password-env", help="змінна середовища з паролем (інакше — запит)")
     accounts.add_parser("list", help="список акаунтів")
     remove = accounts.add_parser("remove", help="видалити акаунт")
     remove.add_argument("id")
@@ -72,6 +80,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="шлях до власного chromium-сумісного браузера (потрібен --headful)",
     )
     login.add_argument("--fresh", action="store_true", help="ігнорувати збережену сесію")
+    login.add_argument(
+        "--manual",
+        action="store_true",
+        help="ручний вхід: автоматизацію вимкнено, програма чекає, поки ви увійдете самі, "
+        "після чого забирає сесію й закриває браузер (потрібен --headful; пароль не потрібен)",
+    )
+    login.add_argument(
+        "--manual-timeout",
+        type=float,
+        default=600.0,
+        metavar="СЕК",
+        help="скільки чекати ручного входу (за замовч. 600)",
+    )
     logout = sub.add_parser("logout", help="вийти (очистити сесію)")
     logout.add_argument("id")
     check = sub.add_parser("check", help="перевірити дійсність збереженої сесії")
@@ -91,9 +112,20 @@ def build_parser() -> argparse.ArgumentParser:
     imp.add_argument("--passphrase-env", help="змінна з парольною фразою пакета")
 
     debug = sub.add_parser("debug", help="інструменти дебагу").add_subparsers(dest="cmd", required=True)
-    open_cmd = debug.add_parser("open", help="відкрити URL активним акаунтом і зробити дамп")
+    open_cmd = debug.add_parser(
+        "open",
+        help="відкрити URL і зробити дамп (БЕЗ входу в акаунт)",
+        description=(
+            "Відкриває сторінку «як є»: з cookie збереженої сесії активного акаунта, якщо вона є, "
+            "інакше анонімно. Вхід не виконується, чинність сесії не перевіряється, "
+            "сесія не змінюється."
+        ),
+    )
     open_cmd.add_argument("url")
-    open_cmd.add_argument("--headful", action="store_true")
+    open_cmd.add_argument("--headful", action="store_true", help="показати вікно браузера")
+    who = open_cmd.add_mutually_exclusive_group()
+    who.add_argument("--account", metavar="ID", help="сесія цього акаунта (замість активного)")
+    who.add_argument("--anonymous", action="store_true", help="без cookie (ігнорувати сесію)")
     return parser
 
 
@@ -120,7 +152,12 @@ def login_mode_from_args(args: argparse.Namespace) -> LoginMode:
         choice = BrowserChoice.custom(args.browser_path)
     else:
         choice = BrowserChoice(BrowserKind(args.browser or BrowserKind.CHROMIUM.value))
-    return LoginMode(headless=not args.headful, browser=choice)
+    return LoginMode(
+        headless=not args.headful,
+        browser=choice,
+        manual=args.manual,
+        manual_timeout_s=args.manual_timeout,
+    )
 
 
 def _read_password(env_name: str | None) -> Secret:
@@ -134,9 +171,13 @@ async def _dispatch(api: AliExpressWebApi, args: argparse.Namespace) -> int:
     command = (args.group, getattr(args, "cmd", None))
     match command:
         case ("accounts", "add"):
-            credentials = Credentials(args.login, _read_password(args.password_env))
+            credentials = Credentials(args.login, _read_password(args.password_env)) if args.login else None
             await api.accounts.add(AccountId.parse(args.id), credentials)
-            print(f"Акаунт {args.id} додано")
+            print(f"Акаунт {args.id} додано" + ("" if credentials else " (без облікових даних)"))
+        case ("accounts", "update"):
+            credentials = Credentials(args.login, _read_password(args.password_env))
+            await api.accounts.update_credentials(AccountId.parse(args.id), credentials)
+            print(f"Облікові дані акаунта {args.id} оновлено")
         case ("accounts", "list"):
             for item in await api.accounts.list_summaries():
                 mark = "*" if item.is_active else " "
@@ -156,8 +197,20 @@ async def _dispatch(api: AliExpressWebApi, args: argparse.Namespace) -> int:
             await api.accounts.set_active(AccountId.parse(args.id))
             print(f"Активний акаунт: {args.id}")
         case ("login", _):
-            await api.auth.login(AccountId.parse(args.id), mode=args.login_mode, fresh=args.fresh)
-            print("Вхід виконано, сесію збережено")
+            if args.login_mode.manual:
+                print(
+                    "Відкриється браузер. Увійдіть в акаунт самостійно — програма не втручається; "
+                    f"очікую до {int(args.login_mode.manual_timeout_s)} с. Після входу браузер "
+                    "закриється автоматично, а сесія збережеться."
+                )
+            login_result = await api.auth.login(
+                AccountId.parse(args.id), mode=args.login_mode, fresh=args.fresh
+            )
+            print(
+                "Акаунт уже авторизований (сесія активна), повторний вхід не потрібен"
+                if login_result.already_authenticated
+                else "Вхід виконано, сесію збережено"
+            )
         case ("logout", _):
             await api.auth.logout(AccountId.parse(args.id))
             print("Сесію очищено")
@@ -182,8 +235,22 @@ async def _dispatch(api: AliExpressWebApi, args: argparse.Namespace) -> int:
             )
             print(f"Імпортовано акаунт {account.id}")
         case ("debug", "open"):
-            path = await api.debug.open_and_dump(args.url, headless=_headless_override(args))
-            print(f"Дамп збережено: {path}" if path else "Дамп зберегти не вдалося")
+            debug_result = await api.debug.open_and_dump(
+                args.url,
+                headless=_headless_override(args),
+                account_id=AccountId.parse(args.account) if args.account else None,
+                anonymous=args.anonymous,
+            )
+            print(
+                f"Сторінку відкрито із сесією акаунта {debug_result.account_id}"
+                if debug_result.account_id
+                else "Сторінку відкрито анонімно (без cookie)"
+            )
+            print(
+                f"Дамп збережено: {debug_result.dump_dir}"
+                if debug_result.dump_dir
+                else "Дамп зберегти не вдалося"
+            )
         case _:  # pragma: no cover - argparse сюди не пропустить
             raise ConfigurationError(f"Невідома команда: {command}")
     return 0

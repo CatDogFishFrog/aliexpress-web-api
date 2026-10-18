@@ -50,6 +50,14 @@ class BrowserSettings:
 
 
 @dataclass(frozen=True, slots=True)
+class HumanSettings:
+    """Людиноподібна взаємодія зі сторінкою (набір тексту, миша, скрол). Див. ``browser/human.py``."""
+
+    enabled: bool = True
+    speed: float = 1.0  # множник швидкості: >1 швидше, <1 повільніше
+
+
+@dataclass(frozen=True, slots=True)
 class DiagnosticsSettings:
     policy: DumpPolicy = DumpPolicy.ON_ERROR
     keep: int = 50
@@ -67,7 +75,7 @@ class LoggingSettings:
 class AliExpressSettings:
     base_url: str = "https://www.aliexpress.com"
     login_url: str = "https://login.aliexpress.com/"
-    session_probe_url: str = "https://www.aliexpress.com/p/order/index.html"
+    session_probe_url: str | None = None  # None = сторінка входу (авторизованих вона перекидає геть)
     logout_url: str | None = None
     session_verify_ttl_s: float = 600.0
 
@@ -77,6 +85,7 @@ class Settings:
     data_dir: Path = Path("./data")
     session_secret: Secret | None = None
     browser: BrowserSettings = field(default_factory=BrowserSettings)
+    human: HumanSettings = field(default_factory=HumanSettings)
     diagnostics: DiagnosticsSettings = field(default_factory=DiagnosticsSettings)
     logging: LoggingSettings = field(default_factory=LoggingSettings)
     aliexpress: AliExpressSettings = field(default_factory=AliExpressSettings)
@@ -152,6 +161,10 @@ class Settings:
                 slow_mo_ms=_to_int("SLOW_MO_MS", get("SLOW_MO_MS"), 0, minimum=0),
                 proxy=proxy,
             ),
+            human=HumanSettings(
+                enabled=_to_bool("HUMAN_INPUT", get("HUMAN_INPUT"), True),
+                speed=_to_float("HUMAN_SPEED", get("HUMAN_SPEED"), 1.0, minimum=0.3, maximum=3.0),
+            ),
             diagnostics=DiagnosticsSettings(
                 policy=_to_enum("DUMP_POLICY", get("DUMP_POLICY"), DumpPolicy, DumpPolicy.ON_ERROR),
                 keep=_to_int("DUMP_KEEP", get("DUMP_KEEP"), 50, minimum=1),
@@ -165,7 +178,7 @@ class Settings:
             aliexpress=AliExpressSettings(
                 base_url=(get("BASE_URL") or defaults.aliexpress.base_url).rstrip("/"),
                 login_url=get("LOGIN_URL") or defaults.aliexpress.login_url,
-                session_probe_url=get("SESSION_PROBE_URL") or defaults.aliexpress.session_probe_url,
+                session_probe_url=get("SESSION_PROBE_URL"),
                 logout_url=get("LOGOUT_URL"),
                 session_verify_ttl_s=float(
                     _to_int("SESSION_VERIFY_TTL_S", get("SESSION_VERIFY_TTL_S"), 600, minimum=0)
@@ -198,6 +211,18 @@ def _to_int(name: str, raw: str | None, default: int, *, minimum: int) -> int:
         raise ConfigurationError(f"{ENV_PREFIX}{name}: очікується ціле число, отримано {raw!r}") from exc
     if value < minimum:
         raise ConfigurationError(f"{ENV_PREFIX}{name}: значення має бути >= {minimum}")
+    return value
+
+
+def _to_float(name: str, raw: str | None, default: float, *, minimum: float, maximum: float) -> float:
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ConfigurationError(f"{ENV_PREFIX}{name}: очікується число, отримано {raw!r}") from exc
+    if not minimum <= value <= maximum:
+        raise ConfigurationError(f"{ENV_PREFIX}{name}: значення має бути в межах {minimum}..{maximum}")
     return value
 
 

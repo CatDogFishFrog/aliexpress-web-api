@@ -48,13 +48,19 @@ class BrowserChoice:
 
 @dataclass(frozen=True, slots=True)
 class LoginMode:
-    """Режим входу: безголовий чи з вікном + який браузер.
+    """Режим входу: безголовий чи з вікном, який браузер, автоматичний чи ручний.
 
-    Інваріант: безголовий вхід можливий лише в браузері patchright.
+    Інваріанти:
+      * безголовий вхід можливий лише в браузері patchright;
+      * ручний вхід (``manual``) вимагає вікна — людина має бачити браузер.
+    Ручний режим вимикає автоматизацію: програма лише чекає, поки людина увійде сама, після чого
+    забирає сесію й закриває браузер. Облікові дані при цьому не потрібні.
     """
 
     headless: bool = True
     browser: BrowserChoice = BrowserChoice()
+    manual: bool = False
+    manual_timeout_s: float = 600.0
 
     def __post_init__(self) -> None:
         if self.headless and not self.browser.is_bundled:
@@ -62,3 +68,7 @@ class LoginMode:
                 "Безголовий вхід можливий лише в браузері patchright (chromium). "
                 "Для Chrome, Edge чи власного браузера використайте режим з вікном (--headful)."
             )
+        if self.manual and self.headless:
+            raise InvalidLoginModeError("Ручний вхід (--manual) потребує вікна браузера: додайте --headful.")
+        if self.manual_timeout_s <= 0:
+            raise InvalidLoginModeError("Таймаут ручного входу має бути додатним")

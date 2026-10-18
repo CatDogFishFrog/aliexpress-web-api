@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from aliweb.application.ports.auth import LoginRequest
+from aliweb.application.ports.auth import LoginRequest, LoginResult
 from aliweb.domain.accounts import Account, AccountId, Credentials, SessionState
 from aliweb.domain.secret import Secret
 from aliweb.infrastructure.crypto.scrypt_aesgcm import ScryptAesGcmCipher, ScryptParams
@@ -79,10 +79,11 @@ class FakeAuthenticator:
         self.logout_calls = 0
         self.logout_error: Exception | None = None
         self.next_cookie = "fresh"
+        self.already_authenticated = False
 
-    async def login(self, request: LoginRequest) -> SessionState:
+    async def login(self, request: LoginRequest) -> LoginResult:
         self.login_calls.append(request)
-        return make_session(self.next_cookie)
+        return LoginResult(make_session(self.next_cookie), self.already_authenticated)
 
     async def is_session_valid(self, session: SessionState, *, headless: bool | None = None) -> bool:
         self.validity_checks += 1
