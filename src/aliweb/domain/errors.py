@@ -125,5 +125,9 @@ class PageStructureError(ScrapingError):
     """Структура сторінки не збіглася з очікуваною (змінилась верстка?)."""
 
 
+class ProfileGenerationError(AliWebError):
+    """Не вдалося створити реалістичний профіль браузера."""
+
+
 class ExtractorNotImplementedError(ScrapingError):
     """Екстрактор ще не реалізований (каркас)."""

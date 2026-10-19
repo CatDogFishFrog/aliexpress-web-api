@@ -14,7 +14,14 @@ from aliweb.domain.accounts import AccountId, StorageState
 from aliweb.domain.errors import AccountNotFoundError
 from aliweb.infrastructure.browser.debugger import AccountSessionDebugger
 from aliweb.infrastructure.browser.session import BrowserSession, is_target_closed
-from tests.conftest import MemoryActiveStore, MemoryRepository, make_account, make_session
+from tests.conftest import (
+    FakeProfileGenerator,
+    MemoryActiveStore,
+    MemoryRepository,
+    make_account,
+    make_profile,
+    make_session,
+)
 
 
 class FakePage:
@@ -44,8 +51,16 @@ class FakeFactory:
         *,
         headless: bool | None = None,
         browser: object = None,
+        profile: object = None,
     ) -> AsyncIterator[Any]:
-        self.opened.append({"storage_state": storage_state, "headless": headless, "browser": browser})
+        self.opened.append(
+            {
+                "storage_state": storage_state,
+                "headless": headless,
+                "browser": browser,
+                "profile": profile,
+            }
+        )
         yield type("Session", (), {"page": self.page, "recorder": None})()
 
 
@@ -62,51 +77,58 @@ class FakeDiagnostics:
 def parts(
     repo: MemoryRepository, active: MemoryActiveStore
 ) -> tuple[AccountSessionDebugger, FakeFactory, AccountService]:
-    accounts = AccountService(repo, active)
+    accounts = AccountService(repo, active, FakeProfileGenerator())
     factory = FakeFactory()
     debugger = AccountSessionDebugger(accounts, cast(Any, factory), cast(Any, FakeDiagnostics()))
     return debugger, factory, accounts
 
 
-async def test_uses_stored_session_without_any_login(
+async def test_uses_stored_session_and_profile_without_any_login(
     parts: tuple[AccountSessionDebugger, FakeFactory, AccountService],
     repo: MemoryRepository,
     active: MemoryActiveStore,
 ) -> None:
-    debugger, factory, accounts = parts
-    repo.items[AccountId("main")] = make_account("main", session=make_session("COOKIE"))
+    debugger, factory, _ = parts
+    stored = make_profile("STORED")
+    repo.items[AccountId("main")] = make_account("main", session=make_session("COOKIE"), profile=stored)
     active.value = AccountId("main")
     result = await debugger.open_and_dump("https://www.aliexpress.com/")
     assert result.account_id == AccountId("main") and result.dump_dir
+    assert result.with_session and result.with_profile
     assert factory.opened[0]["storage_state"] == make_session("COOKIE").storage_state
+    assert factory.opened[0]["profile"] is stored  # те саме середовище, що й у скрапера
     assert factory.page.visited == ["https://www.aliexpress.com/"]
 
 
-async def test_account_without_session_opens_anonymously_and_does_not_login(
+async def test_account_without_session_uses_its_environment_but_never_logs_in(
     parts: tuple[AccountSessionDebugger, FakeFactory, AccountService],
     repo: MemoryRepository,
     active: MemoryActiveStore,
 ) -> None:
     """Сценарій з логу: акаунт без сесії, а `debug open` чомусь намагався увійти."""
     debugger, factory, _ = parts
-    repo.items[AccountId("main")] = make_account("main")  # є пароль, сесії немає
+    repo.items[AccountId("main")] = make_account("main")  # є пароль, сесії й профілю немає
     active.value = AccountId("main")
     result = await debugger.open_and_dump("https://www.aliexpress.com/")
-    assert result.account_id is None
+    assert result.account_id == AccountId("main")
+    assert not result.with_session and result.with_profile
     assert factory.opened[0]["storage_state"] is None
+    assert factory.opened[0]["profile"] is not None  # профіль створено й збережено
+    assert repo.items[AccountId("main")].profile is not None
     assert factory.page.visited == ["https://www.aliexpress.com/"]  # лише запитана сторінка
 
 
-async def test_anonymous_flag_ignores_existing_session(
+async def test_anonymous_flag_is_a_plain_browser(
     parts: tuple[AccountSessionDebugger, FakeFactory, AccountService],
     repo: MemoryRepository,
     active: MemoryActiveStore,
 ) -> None:
     debugger, factory, _ = parts
-    repo.items[AccountId("main")] = make_account("main", session=make_session())
+    repo.items[AccountId("main")] = make_account("main", session=make_session(), profile=make_profile())
     active.value = AccountId("main")
     result = await debugger.open_and_dump("https://x.aliexpress.com/", anonymous=True)
-    assert result.account_id is None and factory.opened[0]["storage_state"] is None
+    assert result.account_id is None and not result.with_session and not result.with_profile
+    assert factory.opened[0]["storage_state"] is None and factory.opened[0]["profile"] is None
 
 
 async def test_explicit_account_overrides_active(
@@ -115,8 +137,9 @@ async def test_explicit_account_overrides_active(
     active: MemoryActiveStore,
 ) -> None:
     debugger, factory, _ = parts
-    repo.items[AccountId("a")] = make_account("a", session=make_session("A"))
-    repo.items[AccountId("b")] = make_account("b", session=make_session("B"))
+    profile_b = make_profile("B")
+    repo.items[AccountId("a")] = make_account("a", session=make_session("A"), profile=make_profile("A"))
+    repo.items[AccountId("b")] = make_account("b", session=make_session("B"), profile=profile_b)
     active.value = AccountId("a")
     result = await debugger.open_and_dump(
         "https://x.aliexpress.com/", account_id=AccountId("b"), headless=False
@@ -126,14 +149,16 @@ async def test_explicit_account_overrides_active(
         "storage_state": make_session("B").storage_state,
         "headless": False,
         "browser": None,
+        "profile": profile_b,
     }
 
 
-async def test_no_accounts_at_all_is_anonymous(
+async def test_no_accounts_at_all_is_a_plain_browser(
     parts: tuple[AccountSessionDebugger, FakeFactory, AccountService],
 ) -> None:
     debugger, factory, _ = parts
-    assert (await debugger.open_and_dump("https://x.aliexpress.com/")).account_id is None
+    result = await debugger.open_and_dump("https://x.aliexpress.com/")
+    assert result.account_id is None and factory.opened[0]["profile"] is None
 
 
 async def test_unknown_account_is_an_error(

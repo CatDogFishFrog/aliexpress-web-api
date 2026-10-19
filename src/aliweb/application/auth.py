@@ -54,7 +54,7 @@ class AuthService:
             ``LoginResult``; ``already_authenticated=True``, якщо сайт одразу визнав збережену
             сесію дійсною (повторний вхід не виконувався).
         """
-        account = await self._accounts.get(account_id)
+        account = await self._accounts.ensure_profile(account_id)  # середовище акаунта фіксується тут
         manual = mode is not None and mode.manual
         if account.credentials is None and not manual:
             raise MissingCredentialsError(
@@ -64,7 +64,12 @@ class AuthService:
             )
         previous = None if fresh or account.session is None else account.session.storage_state
         result = await self._auth.login(
-            LoginRequest(credentials=account.credentials, mode=mode, storage_state=previous)
+            LoginRequest(
+                credentials=account.credentials,
+                mode=mode,
+                storage_state=previous,
+                profile=account.profile,
+            )
         )
         await self._repo.save(account.with_session(result.session, now=self._clock()))
         self._verified_at[account_id] = self._monotonic()
@@ -91,7 +96,7 @@ class AuthService:
 
     async def ensure_session(self, account_id: AccountId, *, headless: bool | None = None) -> SessionState:
         """Повертає дійсну сесію: перевіряє наявну (з TTL-кешем) або входить заново."""
-        account = await self._accounts.get(account_id)
+        account = await self._accounts.ensure_profile(account_id)
         session = account.session
         relogin_mode = None if headless is None else LoginMode(headless=headless)
         if session is None:
@@ -101,7 +106,7 @@ class AuthService:
         if verified is not None and self._monotonic() - verified < self._verify_ttl_s:
             return session
 
-        if await self._auth.is_session_valid(session, headless=headless):
+        if await self._auth.is_session_valid(session, headless=headless, profile=account.profile):
             self._verified_at[account_id] = self._monotonic()
             return session
 
@@ -110,10 +115,13 @@ class AuthService:
 
     async def check(self, account_id: AccountId, *, headless: bool | None = None) -> bool:
         """Примусова перевірка збереженої сесії без повторного входу."""
-        account = await self._accounts.get(account_id)
-        if account.session is None:
+        if (await self._accounts.get(account_id)).session is None:
             return False
-        valid = await self._auth.is_session_valid(account.session, headless=headless)
+        account = await self._accounts.ensure_profile(account_id)  # сесія вже є — потрібне її середовище
+        session = account.session
+        if session is None:  # лише для типізації: щойно перевірили, що сесія є
+            return False
+        valid = await self._auth.is_session_valid(session, headless=headless, profile=account.profile)
         if valid:
             self._verified_at[account_id] = self._monotonic()
         else:

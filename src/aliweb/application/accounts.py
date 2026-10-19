@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 
 from aliweb.application.ports.accounts import AccountRepository, ActiveAccountStore
+from aliweb.application.ports.profiles import ProfileGenerator
 from aliweb.domain.accounts import Account, AccountId, AccountSummary, Credentials
 from aliweb.domain.errors import (
     AccountAlreadyExistsError,
@@ -14,6 +17,8 @@ from aliweb.domain.errors import (
 )
 
 type Clock = Callable[[], datetime]
+
+_log = logging.getLogger(__name__)
 
 
 def utc_now() -> datetime:
@@ -27,11 +32,13 @@ class AccountService:
         self,
         repository: AccountRepository,
         active_store: ActiveAccountStore,
+        profiles: ProfileGenerator,
         *,
         clock: Clock = utc_now,
     ) -> None:
         self._repo = repository
         self._active = active_store
+        self._profiles = profiles
         self._clock = clock
 
     async def add(self, account_id: AccountId, credentials: Credentials | None = None) -> Account:
@@ -50,6 +57,30 @@ class AccountService:
         if account is None:
             raise AccountNotFoundError(f"Акаунт {account_id} не знайдено")
         return account
+
+    async def ensure_profile(self, account_id: AccountId) -> Account:
+        """Гарантує, що в акаунта є профіль браузерного середовища (створює й зберігає, якщо немає).
+
+        Профіль створюється ОДИН раз і далі не змінюється — щоб акаунт завжди працював в одному й тому
+        самому «середовищі» (UA, відбиток, мова, часовий пояс, розмір вікна).
+        """
+        account = await self.get(account_id)
+        if account.profile is not None:
+            return account
+        profile = await asyncio.to_thread(self._profiles.generate)  # CPU-робота, не блокуємо цикл подій
+        updated = account.with_profile(profile, now=self._clock())
+        await self._repo.save(updated)
+        _log.info("Створено профіль середовища", extra={"account": str(account_id), "profile": profile.label})
+        return updated
+
+    async def regenerate_profile(self, account_id: AccountId) -> Account:
+        """Примусово створює НОВИЙ профіль (старий втрачається). Існуюча сесія лишається, але вона
+        створена в іншому середовищі — зазвичай варто увійти заново (``login --fresh``)."""
+        account = await self.get(account_id)
+        profile = await asyncio.to_thread(self._profiles.generate)
+        updated = account.with_profile(profile, now=self._clock())
+        await self._repo.save(updated)
+        return updated
 
     async def update_credentials(self, account_id: AccountId, credentials: Credentials | None) -> Account:
         account = (await self.get(account_id)).with_credentials(credentials, now=self._clock())
@@ -109,6 +140,7 @@ class AccountService:
                     has_session=account.session is not None,
                     session_captured_at=account.session.captured_at if account.session else None,
                     is_active=account.id == active,
+                    profile_label=account.profile.label if account.profile else None,
                 )
             )
         return summaries

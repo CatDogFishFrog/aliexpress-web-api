@@ -201,3 +201,28 @@ class TestHumanSettings:
     def test_probe_url_defaults_to_login_page(self) -> None:
         s = Settings.from_env({}, dotenv_path=None)
         assert s.aliexpress.session_probe_url is None
+
+
+class TestFingerprintSettings:
+    def test_default_follows_host_os(self) -> None:
+        assert Settings.from_env({}, dotenv_path=None).fingerprint.claimed_os is None
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"), [("windows", "windows"), ("MacOS", "macos"), ("linux", "linux"), ("auto", None)]
+    )
+    def test_os_parsing(self, raw: str, expected: str | None) -> None:
+        got = Settings.from_env({"ALIWEB_FINGERPRINT_OS": raw}, dotenv_path=None).fingerprint.claimed_os
+        assert (got.value if got else None) == expected
+
+    def test_invalid_os_rejected(self) -> None:
+        with pytest.raises(ConfigurationError, match="FINGERPRINT_OS"):
+            Settings.from_env({"ALIWEB_FINGERPRINT_OS": "beos"}, dotenv_path=None)
+
+    @pytest.mark.parametrize("zone", ["Europe/Kyiv", "UTC", "America/Argentina/Buenos_Aires", "Etc/GMT+3"])
+    def test_valid_timezones(self, zone: str) -> None:
+        assert Settings.from_env({"ALIWEB_TIMEZONE": zone}, dotenv_path=None).browser.timezone_id == zone
+
+    @pytest.mark.parametrize("zone", ["Kyiv time", "Europe/Kyiv; drop", "../etc", "+02:00"])
+    def test_invalid_timezones_rejected(self, zone: str) -> None:
+        with pytest.raises(ConfigurationError, match="TIMEZONE"):
+            Settings.from_env({"ALIWEB_TIMEZONE": zone}, dotenv_path=None)

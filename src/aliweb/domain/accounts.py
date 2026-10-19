@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Any
 
 from aliweb.domain.errors import InvalidAccountIdError
+from aliweb.domain.profile import BrowserProfile
 from aliweb.domain.secret import Secret
 
 #: Формат storage_state Playwright: ``{"cookies": [...], "origins": [...]}``.
@@ -91,6 +92,10 @@ class Account:
     updated_at: datetime
     credentials: Credentials | None = None
     session: SessionState | None = None
+    profile: BrowserProfile | None = None  # постійне браузерне «середовище» акаунта
+
+    def with_profile(self, profile: BrowserProfile | None, *, now: datetime) -> Account:
+        return replace(self, profile=profile, updated_at=now)
 
     def with_session(self, session: SessionState | None, *, now: datetime) -> Account:
         return replace(self, session=session, updated_at=now)
@@ -111,3 +116,4 @@ class AccountSummary:
     has_session: bool
     session_captured_at: datetime | None
     is_active: bool = field(default=False)
+    profile_label: str | None = None  # напр. "windows 1920x1080"; None — профілю ще немає

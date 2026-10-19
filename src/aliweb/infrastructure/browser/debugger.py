@@ -8,6 +8,7 @@ import logging
 from aliweb.application.accounts import AccountService
 from aliweb.application.ports.debug import DebugOpenResult
 from aliweb.domain.accounts import AccountId, StorageState
+from aliweb.domain.profile import BrowserProfile
 from aliweb.infrastructure.browser.session import BrowserSessionFactory
 from aliweb.infrastructure.diagnostics.collector import DiagnosticsCollector
 
@@ -18,7 +19,8 @@ class AccountSessionDebugger:
     """Відкриває сторінку «як є»: з cookie збереженої сесії акаунта, якщо вона є, інакше анонімно.
 
     Принципово НЕ виконує вхід, НЕ перевіряє чинність сесії і НЕ зберігає оновлені cookie —
-    інструмент для швидкого огляду того, що зараз бачить скрапер.
+    інструмент для швидкого огляду того, що зараз бачить скрапер. Відкриває у середовищі (профілі)
+    акаунта, щоб сторінка виглядала так само, як для скрапера.
     """
 
     def __init__(
@@ -31,18 +33,18 @@ class AccountSessionDebugger:
         self._factory = factory
         self._diagnostics = diagnostics
 
-    async def _resolve_session(
+    async def _resolve(
         self, account_id: AccountId | None, anonymous: bool
-    ) -> tuple[StorageState | None, AccountId | None]:
+    ) -> tuple[StorageState | None, BrowserProfile | None, AccountId | None]:
+        """Сесія та профіль акаунта (``anonymous`` — ні того, ні іншого: «чистий» браузер)."""
         if anonymous:
-            return None, None
+            return None, None, None
         target = account_id or await self._accounts.get_active_id()
         if target is None:
-            return None, None
-        account = await self._accounts.get(target)  # AccountNotFoundError, якщо id невірний
-        if account.session is None:
-            return None, None
-        return account.session.storage_state, target
+            return None, None, None
+        account = await self._accounts.ensure_profile(target)  # AccountNotFoundError, якщо id невірний
+        storage = account.session.storage_state if account.session else None
+        return storage, account.profile, target
 
     async def open_and_dump(
         self,
@@ -52,13 +54,18 @@ class AccountSessionDebugger:
         account_id: AccountId | None = None,
         anonymous: bool = False,
     ) -> DebugOpenResult:
-        storage_state, used = await self._resolve_session(account_id, anonymous)
+        storage_state, profile, used = await self._resolve(account_id, anonymous)
         _log.info("Debug-відкриття сторінки", extra={"account": str(used) if used else "anonymous"})
-        async with self._factory.open(storage_state, headless=headless) as session:
+        async with self._factory.open(storage_state, headless=headless, profile=profile) as session:
             await session.page.goto(url, wait_until="domcontentloaded")
             with contextlib.suppress(Exception):  # дати JS домалювати сторінку, але не чекати вічно
                 await session.page.wait_for_load_state("networkidle", timeout=5000)
             path = await self._diagnostics.capture(
                 session.page, reason="debug-open", recorder=session.recorder
             )
-        return DebugOpenResult(dump_dir=str(path) if path else None, account_id=used)
+        return DebugOpenResult(
+            dump_dir=str(path) if path else None,
+            account_id=used,
+            with_session=storage_state is not None,
+            with_profile=profile is not None,
+        )

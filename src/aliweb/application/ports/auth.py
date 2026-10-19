@@ -5,6 +5,7 @@ from typing import Protocol
 
 from aliweb.domain.accounts import Credentials, SessionState, StorageState
 from aliweb.domain.browser import LoginMode
+from aliweb.domain.profile import BrowserProfile
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,6 +20,7 @@ class LoginRequest:
     credentials: Credentials | None
     mode: LoginMode | None = None
     storage_state: StorageState | None = None
+    profile: BrowserProfile | None = None  # браузерне середовище акаунта (UA, відбиток…)
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,7 +40,13 @@ class Authenticator(Protocol):
         """
         ...
 
-    async def is_session_valid(self, session: SessionState, *, headless: bool | None = None) -> bool: ...
+    async def is_session_valid(
+        self,
+        session: SessionState,
+        *,
+        headless: bool | None = None,
+        profile: BrowserProfile | None = None,
+    ) -> bool: ...
 
     async def logout(self, session: SessionState) -> None:
         """Best-effort вихід на боці сайту. Локальне очищення робить сервіс."""

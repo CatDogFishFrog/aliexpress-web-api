@@ -27,6 +27,7 @@ from aliweb.application.catalog import CatalogService, SellerService
 from aliweb.application.ports.auth import TwoFactorPrompt
 from aliweb.application.transfer import SessionTransferService
 from aliweb.infrastructure.browser.debugger import AccountSessionDebugger
+from aliweb.infrastructure.browser.fingerprint import BrowserForgeProfileGenerator
 from aliweb.infrastructure.browser.page_provider import AuthenticatedPageProvider
 from aliweb.infrastructure.browser.pool import BrowserPool
 from aliweb.infrastructure.browser.session import BrowserSessionFactory
@@ -83,11 +84,16 @@ def build_api(
     authenticator = AliExpressAuthenticator(sessions, flow, manual_flow, probe, settings.aliexpress)
 
     # ── прикладні сервіси ──
-    accounts = AccountService(repository, active_store)
+    profile_generator = BrowserForgeProfileGenerator(
+        settings.fingerprint,
+        locale=settings.browser.locale,
+        timezone_id=settings.browser.timezone_id,
+    )
+    accounts = AccountService(repository, active_store, profile_generator)
     auth = AuthService(
         accounts, repository, authenticator, verify_ttl_s=settings.aliexpress.session_verify_ttl_s
     )
-    transfer = SessionTransferService(repository, cipher, make_cipher)
+    transfer = SessionTransferService(repository, cipher, make_cipher, profile_generator)
 
     provider = AuthenticatedPageProvider(accounts, auth, repository, sessions)
     urls = AliExpressUrls(settings.aliexpress.base_url)

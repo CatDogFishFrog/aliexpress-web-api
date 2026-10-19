@@ -13,6 +13,7 @@ from aliweb.application.accounts import utc_now
 from aliweb.application.ports.auth import LoginRequest, LoginResult
 from aliweb.domain.accounts import SessionState
 from aliweb.domain.errors import MissingCredentialsError
+from aliweb.domain.profile import BrowserProfile
 from aliweb.infrastructure.browser.session import BrowserSessionFactory
 from aliweb.infrastructure.config import AliExpressSettings
 
@@ -46,6 +47,7 @@ class AliExpressAuthenticator:
             request.storage_state,
             headless=mode.headless if mode else None,
             browser=mode.browser if mode else None,
+            profile=request.profile,
         ) as session:
             if mode is not None and manual:
                 already = await self._manual.run(session, timeout_s=mode.manual_timeout_s)
@@ -58,8 +60,16 @@ class AliExpressAuthenticator:
             already_authenticated=already,
         )
 
-    async def is_session_valid(self, session: SessionState, *, headless: bool | None = None) -> bool:
-        async with self._factory.open(session.storage_state, headless=headless) as browser_session:
+    async def is_session_valid(
+        self,
+        session: SessionState,
+        *,
+        headless: bool | None = None,
+        profile: BrowserProfile | None = None,
+    ) -> bool:
+        async with self._factory.open(
+            session.storage_state, headless=headless, profile=profile
+        ) as browser_session:
             return await self._probe.is_authenticated(browser_session)
 
     async def logout(self, session: SessionState) -> None:

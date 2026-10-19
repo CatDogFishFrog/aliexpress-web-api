@@ -28,6 +28,7 @@ from aliweb.domain.secret import Secret
 from aliweb.infrastructure.crypto.scrypt_aesgcm import ScryptAesGcmCipher, ScryptParams
 from tests.conftest import (
     FakeAuthenticator,
+    FakeProfileGenerator,
     MemoryActiveStore,
     MemoryRepository,
     fast_cipher,
@@ -40,8 +41,10 @@ CREDS = Credentials("u@mail.com", Secret("password-1"))
 
 
 @pytest.fixture
-def accounts(repo: MemoryRepository, active: MemoryActiveStore) -> AccountService:
-    return AccountService(repo, active)
+def accounts(
+    repo: MemoryRepository, active: MemoryActiveStore, profiles: FakeProfileGenerator
+) -> AccountService:
+    return AccountService(repo, active, profiles)
 
 
 class TestAccountService:
@@ -217,9 +220,12 @@ class TestAuthService:
 
 class TestTransfer:
     @pytest.fixture
-    def service(self, repo: MemoryRepository) -> SessionTransferService:
+    def service(self, repo: MemoryRepository, profiles: FakeProfileGenerator) -> SessionTransferService:
         return SessionTransferService(
-            repo, fast_cipher(), lambda s: ScryptAesGcmCipher(s, ScryptParams(12, 8, 1))
+            repo,
+            fast_cipher(),
+            lambda s: ScryptAesGcmCipher(s, ScryptParams(12, 8, 1)),
+            profiles,
         )
 
     async def test_export_excludes_password_by_default(

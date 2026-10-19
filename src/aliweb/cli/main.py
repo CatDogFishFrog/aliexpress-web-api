@@ -20,8 +20,10 @@ from aliweb.bootstrap import build_api
 from aliweb.domain.accounts import AccountId, Credentials
 from aliweb.domain.browser import BrowserChoice, BrowserKind, LoginMode
 from aliweb.domain.errors import AliWebError, ConfigurationError
+from aliweb.domain.profile import BrowserProfile
 from aliweb.domain.secret import Secret
 from aliweb.infrastructure.config import Settings
+from aliweb.infrastructure.crypto.scrypt_aesgcm import MIN_SECRET_LENGTH
 from aliweb.infrastructure.storage.files import atomic_write_private, read_bytes
 
 
@@ -103,13 +105,35 @@ def build_parser() -> argparse.ArgumentParser:
     export = session.add_parser("export", help="експорт у зашифрований .bin")
     export.add_argument("id")
     export.add_argument("file", type=Path)
-    export.add_argument("--include-credentials", action="store_true", help="включити логін/пароль")
-    export.add_argument("--passphrase-env", help="змінна з окремою парольною фразою пакета")
+    export.add_argument(
+        "--include-credentials",
+        action="store_true",
+        help="покласти в пакет логін і пароль акаунта (щоб після імпорту було можливе автоматичне "
+        "входження); за замовчуванням у пакеті лише сесія та відбиток браузера",
+    )
+    export.add_argument(
+        "--no-fingerprint",
+        action="store_true",
+        help="НЕ включати відбиток браузера (UA, екран, GPU, мова…). Після імпорту для сесії "
+        "буде створено новий відбиток",
+    )
+    _add_passphrase_options(export, "пакет шифрується цією фразою замість ALIWEB_SESSION_SECRET")
     imp = session.add_parser("import", help="імпорт із .bin")
     imp.add_argument("file", type=Path)
     imp.add_argument("--as", dest="as_id", help="імпортувати під іншим id")
     imp.add_argument("--overwrite", action="store_true")
-    imp.add_argument("--passphrase-env", help="змінна з парольною фразою пакета")
+    _add_passphrase_options(imp, "фраза, якою зашифровано пакет (якщо експорт був із --passphrase)")
+
+    profile = sub.add_parser("profile", help="профіль браузерного середовища акаунта").add_subparsers(
+        dest="cmd", required=True
+    )
+    show = profile.add_parser("show", help="показати профіль (UA, екран, GPU, мова…)")
+    show.add_argument("id")
+    regen = profile.add_parser(
+        "regenerate",
+        help="створити НОВИЙ профіль (старий втрачається; після цього варто виконати login --fresh)",
+    )
+    regen.add_argument("id")
 
     debug = sub.add_parser("debug", help="інструменти дебагу").add_subparsers(dest="cmd", required=True)
     open_cmd = debug.add_parser(
@@ -129,13 +153,69 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _passphrase(env_name: str | None) -> Secret | None:
+def _add_passphrase_options(parser: argparse.ArgumentParser, purpose: str) -> None:
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--passphrase",
+        action="store_true",
+        help=f"ввести парольну фразу в терміналі (приховано): {purpose}",
+    )
+    group.add_argument(
+        "--passphrase-env",
+        metavar="ЗМІННА",
+        help="ІМ'Я змінної середовища, що містить парольну фразу (не сама фраза!)",
+    )
+
+
+def _resolve_passphrase(args: argparse.Namespace, *, confirm: bool) -> Secret | None:
+    """Парольна фраза пакета: інтерактивно (``--passphrase``), зі змінної (``--passphrase-env``) або немає."""
+    if args.passphrase:
+        phrase = getpass.getpass("Парольна фраза пакета: ")
+        _check_passphrase_length(phrase)
+        if confirm and getpass.getpass("Повторіть парольну фразу: ") != phrase:
+            raise ConfigurationError("Фрази не збігаються")
+        return Secret(phrase)
+    env_name = args.passphrase_env
     if not env_name:
         return None
     value = os.environ.get(env_name)
     if not value:
-        raise ConfigurationError(f"Змінна середовища {env_name} порожня або не задана")
+        raise ConfigurationError(
+            f"Змінна середовища {env_name!r} не задана або порожня. Прапорець --passphrase-env приймає "
+            "ІМ'Я змінної, а не саму фразу. Щоб ввести фразу прямо в терміналі, використайте --passphrase"
+        )
+    _check_passphrase_length(value)
     return Secret(value)
+
+
+def _check_passphrase_length(phrase: str) -> None:
+    if len(phrase) < MIN_SECRET_LENGTH:
+        raise ConfigurationError(
+            f"Парольна фраза має містити щонайменше {MIN_SECRET_LENGTH} символів "
+            "(пакет містить cookie сесії — слабка фраза піддається підбору)"
+        )
+
+
+def _print_profile(account_id: AccountId, profile: BrowserProfile | None) -> None:
+    if profile is None:
+        print(f"У {account_id} ще немає профілю — його буде створено при першому вході/використанні.")
+        return
+    width, height = profile.screen_size
+    rows = [
+        ("ОС (заявлена)", profile.claimed_os.value),
+        ("Мова", profile.locale),
+        ("Часовий пояс", profile.timezone_id or "(як у хоста)"),
+        ("Екран", f"{width}x{height} @ DPR {profile.device_scale_factor:g}"),
+        ("Вікно (viewport)", f"{profile.viewport[0]}x{profile.viewport[1]}"),
+        ("GPU", profile.gpu_renderer or "?"),
+        ("Ядра / пам'ять", f"{profile.hardware_concurrency} / {profile.device_memory} ГБ"),
+        ("User-Agent*", profile.user_agent),
+        ("Створено", f"{profile.created_at:%Y-%m-%d %H:%M} UTC"),
+    ]
+    print(f"Профіль акаунта {account_id}:")
+    for name, value in rows:
+        print(f"  {name:<18}{value}")
+    print("  * версія Chrome в UA підганяється під реальний рушій при кожному запуску")
 
 
 def _headless_override(args: argparse.Namespace) -> bool | None:
@@ -186,7 +266,8 @@ async def _dispatch(api: AliExpressWebApi, args: argparse.Namespace) -> int:
                     if item.has_session
                     else "без сесії"
                 )
-                print(f"{mark} {item.id}  {item.masked_login or '(без логіну)'}  {state}")
+                profile_text = f"профіль: {item.profile_label}" if item.profile_label else "без профілю"
+                print(f"{mark} {item.id}  {item.masked_login or '(без логіну)'}  {state}  {profile_text}")
         case ("accounts", "remove"):
             await api.accounts.remove(AccountId.parse(args.id))
             print("Видалено")
@@ -222,7 +303,8 @@ async def _dispatch(api: AliExpressWebApi, args: argparse.Namespace) -> int:
             blob = await api.transfer.export_bytes(
                 AccountId.parse(args.id),
                 include_credentials=args.include_credentials,
-                passphrase=_passphrase(args.passphrase_env),
+                include_fingerprint=not args.no_fingerprint,
+                passphrase=_resolve_passphrase(args, confirm=True),
             )
             atomic_write_private(args.file, blob)
             print(f"Експортовано: {args.file}")
@@ -231,9 +313,21 @@ async def _dispatch(api: AliExpressWebApi, args: argparse.Namespace) -> int:
                 read_bytes(args.file),
                 as_id=AccountId.parse(args.as_id) if args.as_id else None,
                 overwrite=args.overwrite,
-                passphrase=_passphrase(args.passphrase_env),
+                passphrase=_resolve_passphrase(args, confirm=False),
             )
             print(f"Імпортовано акаунт {account.id}")
+        case ("profile", "show"):
+            account = await api.accounts.get(AccountId.parse(args.id))
+            _print_profile(account.id, account.profile)
+        case ("profile", "regenerate"):
+            updated = await api.accounts.regenerate_profile(AccountId.parse(args.id))
+            label = updated.profile.label if updated.profile else "?"
+            print(f"Створено новий профіль для {updated.id}: {label}")
+            if updated.session is not None:
+                print(
+                    "Увага: збережена сесія створена в ІНШОМУ середовищі. Рекомендується увійти заново: "
+                    f"aliweb login {updated.id} --fresh"
+                )
         case ("debug", "open"):
             debug_result = await api.debug.open_and_dump(
                 args.url,
@@ -242,9 +336,10 @@ async def _dispatch(api: AliExpressWebApi, args: argparse.Namespace) -> int:
                 anonymous=args.anonymous,
             )
             print(
-                f"Сторінку відкрито із сесією акаунта {debug_result.account_id}"
+                f"Сторінку відкрито в середовищі акаунта {debug_result.account_id} "
+                f"(сесія: {'так' if debug_result.with_session else 'ні'})"
                 if debug_result.account_id
-                else "Сторінку відкрито анонімно (без cookie)"
+                else "Сторінку відкрито «чистим» браузером (без cookie й без підміни середовища)"
             )
             print(
                 f"Дамп збережено: {debug_result.dump_dir}"

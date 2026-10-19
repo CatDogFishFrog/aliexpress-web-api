@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -15,6 +16,7 @@ from pathlib import Path
 from dotenv import dotenv_values
 
 from aliweb.domain.errors import ConfigurationError, SecretMissingError
+from aliweb.domain.profile import ClaimedOs
 from aliweb.domain.secret import Secret
 
 ENV_PREFIX = "ALIWEB_"
@@ -58,6 +60,13 @@ class HumanSettings:
 
 
 @dataclass(frozen=True, slots=True)
+class FingerprintSettings:
+    """Параметри СТВОРЕННЯ профілю середовища акаунта (вже створений профіль більше не змінюється)."""
+
+    claimed_os: ClaimedOs | None = None  # None = ОС хоста (так «чесніше» для рушія, див. memory/05)
+
+
+@dataclass(frozen=True, slots=True)
 class DiagnosticsSettings:
     policy: DumpPolicy = DumpPolicy.ON_ERROR
     keep: int = 50
@@ -86,6 +95,7 @@ class Settings:
     session_secret: Secret | None = None
     browser: BrowserSettings = field(default_factory=BrowserSettings)
     human: HumanSettings = field(default_factory=HumanSettings)
+    fingerprint: FingerprintSettings = field(default_factory=FingerprintSettings)
     diagnostics: DiagnosticsSettings = field(default_factory=DiagnosticsSettings)
     logging: LoggingSettings = field(default_factory=LoggingSettings)
     aliexpress: AliExpressSettings = field(default_factory=AliExpressSettings)
@@ -154,7 +164,7 @@ class Settings:
             browser=BrowserSettings(
                 headless=_to_bool("HEADLESS", get("HEADLESS"), True),
                 locale=get("LOCALE") or defaults.browser.locale,
-                timezone_id=get("TIMEZONE"),
+                timezone_id=_to_timezone(get("TIMEZONE")),
                 viewport=_to_viewport(get("VIEWPORT"), defaults.browser.viewport),
                 nav_timeout_ms=_to_int("NAV_TIMEOUT_MS", get("NAV_TIMEOUT_MS"), 45_000, minimum=1000),
                 action_timeout_ms=_to_int("ACTION_TIMEOUT_MS", get("ACTION_TIMEOUT_MS"), 15_000, minimum=500),
@@ -165,6 +175,7 @@ class Settings:
                 enabled=_to_bool("HUMAN_INPUT", get("HUMAN_INPUT"), True),
                 speed=_to_float("HUMAN_SPEED", get("HUMAN_SPEED"), 1.0, minimum=0.3, maximum=3.0),
             ),
+            fingerprint=FingerprintSettings(claimed_os=_to_claimed_os(get("FINGERPRINT_OS"))),
             diagnostics=DiagnosticsSettings(
                 policy=_to_enum("DUMP_POLICY", get("DUMP_POLICY"), DumpPolicy, DumpPolicy.ON_ERROR),
                 keep=_to_int("DUMP_KEEP", get("DUMP_KEEP"), 50, minimum=1),
@@ -212,6 +223,25 @@ def _to_int(name: str, raw: str | None, default: int, *, minimum: int) -> int:
     if value < minimum:
         raise ConfigurationError(f"{ENV_PREFIX}{name}: значення має бути >= {minimum}")
     return value
+
+
+_TIMEZONE_RE = re.compile(r"^[A-Za-z]+(?:[_+-]?[A-Za-z0-9]+)*(?:/[A-Za-z0-9_+-]+)*$")
+
+
+def _to_timezone(raw: str | None) -> str | None:
+    if raw is not None and not _TIMEZONE_RE.fullmatch(raw):
+        raise ConfigurationError(f"{ENV_PREFIX}TIMEZONE: очікується IANA-ідентифікатор, напр. Europe/Kyiv")
+    return raw
+
+
+def _to_claimed_os(raw: str | None) -> ClaimedOs | None:
+    if raw is None or raw.lower() == "auto":
+        return None
+    try:
+        return ClaimedOs(raw.lower())
+    except ValueError as exc:
+        allowed = ", ".join(["auto", *(m.value for m in ClaimedOs)])
+        raise ConfigurationError(f"{ENV_PREFIX}FINGERPRINT_OS: допустимі значення: {allowed}") from exc
 
 
 def _to_float(name: str, raw: str | None, default: float, *, minimum: float, maximum: float) -> float:

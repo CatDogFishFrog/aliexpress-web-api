@@ -49,7 +49,10 @@ class AuthenticatedPageProvider:
         account_id = await self._accounts.require_active_id()
         async with self._locks[account_id]:
             session_state = await self._auth.ensure_session(account_id, headless=headless)
-            async with self._factory.open(session_state.storage_state, headless=headless) as session:
+            account = await self._accounts.get(account_id)  # ensure_session гарантує наявність профілю
+            async with self._factory.open(
+                session_state.storage_state, headless=headless, profile=account.profile
+            ) as session:
                 try:
                     yield session
                 finally:

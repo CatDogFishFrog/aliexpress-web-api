@@ -132,3 +132,11 @@ def test_concrete_infrastructure_wired_only_in_bootstrap() -> None:
 def test_every_package_has_init() -> None:
     for directory in {p.parent for p, _ in modules()}:
         assert (directory / "__init__.py").exists(), f"{directory} без __init__.py"
+
+
+def test_browserforge_only_in_the_fingerprint_module() -> None:
+    """Генерація/застосування відбитка — в одному модулі; решта коду про browserforge не знає."""
+    for path, _ in modules():
+        for module, line in imports_of(path):
+            if module.split(".")[0] == "browserforge":
+                assert rel(path) == "infrastructure/browser/fingerprint.py", f"{rel(path)}:{line}"
