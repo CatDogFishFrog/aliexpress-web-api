@@ -46,7 +46,9 @@ async def test_files_are_encrypted_and_private(file_repo: FileAccountRepository,
     path = tmp_path / "accounts" / "a.bin"
     raw = path.read_bytes()
     assert b"COOKIE_VALUE_123" not in raw and b"p@ss-word" not in raw and b"user@mail.com" not in raw
-    assert (path.stat().st_mode & 0o077) == 0  # лише власник
+    import sys
+    if sys.platform != "win32":
+        assert (path.stat().st_mode & 0o077) == 0  # лише власник (POSIX)
 
 
 async def test_wrong_key_or_corruption_is_storage_error(tmp_path: Path) -> None:

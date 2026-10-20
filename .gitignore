@@ -12,3 +12,4 @@ build/
 *.egg-info/
 .agents/
 skills-lock.json
+realistic-browser-fingerprint/
