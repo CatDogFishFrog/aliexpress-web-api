@@ -32,7 +32,7 @@ class ClaimedOs(StrEnum):
 class BrowserProfile:
     """Постійне середовище акаунта.
 
-    ``fingerprint`` — повний відбиток у форматі browserforge (navigator, screen, videoCard, headers…),
+    ``fingerprint`` — повний відбиток у форматі browserforge-stealth (navigator, screen, videoCard, headers…),
     непрозорий для домену. Версія Chromium у User-Agent у ньому — лише на момент створення: при
     кожному запуску вона підганяється під реальний рушій (як оновлюється справжній браузер).
     """

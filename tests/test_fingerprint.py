@@ -5,17 +5,16 @@ from __future__ import annotations
 import copy
 import json
 import logging
-import random
 import re
-from datetime import UTC, datetime
 from typing import Any
 
 import pytest
 
 from aliweb.domain.errors import ProfileGenerationError
 from aliweb.domain.profile import BrowserProfile, ClaimedOs
+from aliweb.infrastructure.browser import fingerprint as fingerprint_module
 from aliweb.infrastructure.browser.fingerprint import (
-    BrowserForgeProfileGenerator,
+    BrowserForgeStealthProfileGenerator,
     build_init_script,
     build_user_agent,
     chromium_brands,
@@ -259,75 +258,29 @@ class TestInitScript:
         assert script.lstrip().startswith("(") or "function" in script  # це JS
 
 
-def _stub_generator(samples: list[dict[str, Any]]) -> Any:
-    """Підміна FingerprintGenerator: віддає заздалегідь підготовлені відбитки по черзі."""
+class TestGeneratorAdapter:
+    def test_translates_generation_errors(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        class _Generator:
+            def __init__(self, **_: Any) -> None:
+                pass
 
-    class _Fingerprint:
-        def __init__(self, data: dict[str, Any]) -> None:
-            self._data = data
+            def generate(self) -> Any:
+                raise fingerprint_module.bfs.GenerationError("no realistic sample")
 
-        def dumps(self) -> str:
-            return json.dumps(self._data)
-
-    class _Generator:
-        def __init__(self) -> None:
-            self.calls = 0
-
-        def generate(self, **_: Any) -> _Fingerprint:
-            self.calls += 1
-            return _Fingerprint(samples[min(self.calls - 1, len(samples) - 1)])
-
-    return _Generator()
-
-
-class TestGeneratorRejectionSampling:
-    def make(self, samples: list[dict[str, Any]], **kw: Any) -> BrowserForgeProfileGenerator:
-        generator = BrowserForgeProfileGenerator(
-            FingerprintSettings(ClaimedOs.WINDOWS),
-            locale="uk-UA",
-            timezone_id="Europe/Kyiv",
-            rng=random.Random(1),
-            clock=lambda: datetime(2026, 10, 18, tzinfo=UTC),
-            **kw,
+        monkeypatch.setattr(fingerprint_module.bfs, "FingerprintGenerator", _Generator)
+        generator = BrowserForgeStealthProfileGenerator(
+            FingerprintSettings(ClaimedOs.WINDOWS), locale="uk-UA", timezone_id="Europe/Kyiv"
         )
-        generator._generator = _stub_generator(samples)
-        return generator
-
-    def test_bad_samples_are_skipped_until_a_good_one(self) -> None:
-        bad = good_fingerprint()
-        bad["videoCard"]["renderer"] = "Microsoft Basic Render Driver"
-        gen = self.make([bad, bad, good_fingerprint()])
-        profile = gen.generate()
-        assert "NVIDIA" in profile.gpu_renderer
-        assert gen._generator.calls == 3  # type: ignore[union-attr]
-
-    def test_normalizes_known_defects(self) -> None:
-        raw = good_fingerprint()
-        raw["navigator"]["deviceMemory"] = 32  # Chrome ніколи не віддає >8
-        raw["navigator"]["languages"] = ["en-US", " uk-UA"]
-        raw["headers"] = {"sec-ch-ua": '"Brave";v="147"', "Accept-Language": "en-US;q=1.0, uk-UA;q=0.9"}
-        profile = self.make([raw]).generate()
-        navigator = profile.fingerprint["navigator"]
-        assert navigator["deviceMemory"] == 8
-        assert navigator["languages"] == ["uk-UA", "uk", "en-US", "en"] and navigator["language"] == "uk-UA"
-        assert "Brave" not in json.dumps(profile.fingerprint)
-        assert profile.locale == "uk-UA" and profile.timezone_id == "Europe/Kyiv"
-        assert profile.created_at == datetime(2026, 10, 18, tzinfo=UTC)
-
-    def test_gives_up_with_clear_error(self) -> None:
-        bad = good_fingerprint()
-        bad["screen"]["devicePixelRatio"] = 1.1458
-        with pytest.raises(ProfileGenerationError, match="DPR"):
-            self.make([bad], max_attempts=3).generate()
+        with pytest.raises(ProfileGenerationError, match="no realistic sample"):
+            generator.generate()
 
 
 class TestRealGeneratorOutput:
-    """Інваріанти на ВЛАСНИХ згенерованих (browserforge) зразках — реалістичність усіх ОС."""
+    """Перевіряє профілі, створені форком, через адаптер Aliweb для кожної ОС."""
 
     @pytest.mark.parametrize("claimed_os", list(ClaimedOs))
     def test_generated_profiles_are_coherent(self, claimed_os: ClaimedOs) -> None:
-        random.seed(20261018)
-        generator = BrowserForgeProfileGenerator(
+        generator = BrowserForgeStealthProfileGenerator(
             FingerprintSettings(claimed_os), locale="uk-UA", timezone_id="Europe/Kyiv"
         )
         for _ in range(8):
@@ -353,16 +306,14 @@ class TestRealGeneratorOutput:
             assert options["viewport"]["width"] == width
 
     def test_profiles_differ_between_accounts(self) -> None:
-        random.seed(7)
-        generator = BrowserForgeProfileGenerator(
+        generator = BrowserForgeStealthProfileGenerator(
             FingerprintSettings(ClaimedOs.WINDOWS), locale="en-US", timezone_id=None
         )
         gpus = {generator.generate().gpu_renderer for _ in range(12)}
         assert len(gpus) > 2  # різні акаунти — різні «комп'ютери»
 
     def test_profile_survives_json_roundtrip(self) -> None:
-        random.seed(3)
-        profile = BrowserForgeProfileGenerator(
+        profile = BrowserForgeStealthProfileGenerator(
             FingerprintSettings(ClaimedOs.WINDOWS), locale="en-US", timezone_id=None
         ).generate()
         assert json.loads(json.dumps(dict(profile.fingerprint))) == dict(profile.fingerprint)

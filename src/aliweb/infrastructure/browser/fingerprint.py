@@ -11,9 +11,7 @@ Chromium GREASE-брендів та динамічного retargeting під в
 
 from __future__ import annotations
 
-import json
 import logging
-import random
 import sys
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
@@ -76,7 +74,7 @@ def derive_viewport(fingerprint: Mapping[str, Any], claimed_os: ClaimedOs) -> tu
 
 def retarget(profile: BrowserProfile, browser_version: str | None) -> dict[str, Any]:
     """Копія відбитка з UA, брендами й client hints, узгодженими з РЕАЛЬНОЮ версією рушія."""
-    return bfs.retarget(profile, browser_version)
+    return bfs.retarget(_to_bfs_fingerprint(profile), browser_version)
 
 
 def client_hint_headers(profile: BrowserProfile, major: int) -> dict[str, str]:
@@ -133,7 +131,7 @@ def warn_on_environment_drift(
         )
 
 
-class BrowserForgeProfileGenerator:
+class BrowserForgeStealthProfileGenerator:
     """Реалізує порт ``ProfileGenerator`` поверх browserforge-stealth."""
 
     def __init__(
@@ -142,17 +140,15 @@ class BrowserForgeProfileGenerator:
         *,
         locale: str,
         timezone_id: str | None,
-        rng: random.Random | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         max_attempts: int = 60,
     ) -> None:
         self._claimed_os = settings.claimed_os or host_os()
         self._locale = locale
         self._timezone_id = timezone_id
-        self._rng = rng or random.Random()  # noqa: S311 — не криптографія
         self._clock = clock
         self._max_attempts = max_attempts
-        self._generator: Any = None
+        self._generator: bfs.FingerprintGenerator | None = None
 
     def generate(self) -> BrowserProfile:
         """Новий реалістичний профіль. Відкидає нереалістичні зразки й генерує, доки не вийде хороший."""
@@ -164,55 +160,18 @@ class BrowserForgeProfileGenerator:
                 timezone_id=self._timezone_id,
                 realistic=True,
                 max_attempts=self._max_attempts,
-                rng=self._rng,
             )
 
-        if isinstance(self._generator, bfs.FingerprintGenerator):
-            try:
-                fp = self._generator.generate()
-                return BrowserProfile(
-                    created_at=self._clock(),
-                    claimed_os=self._claimed_os,
-                    locale=self._locale,
-                    timezone_id=self._timezone_id,
-                    viewport=fp.viewport,
-                    fingerprint=fp.raw_data,
-                )
-            except bfs.GenerationError as err:
-                raise ProfileGenerationError(str(err)) from err
-
-        # Запасний шлях, коли _generator підмінено тестовим стабом
-        rejected: list[str] = []
-        for _ in range(self._max_attempts):
-            raw = json.loads(self._generator.generate().dumps())
-            normalized = bfs.normalize_fingerprint_dict(
-                raw,
-                os=bfs.OperatingSystem(self._claimed_os.value),
-                locale=self._locale,
-                device_type=bfs.DeviceType.DESKTOP,
-                rng=self._rng,
-            )
-            issues = bfs.realism_issues(
-                normalized,
-                bfs.OperatingSystem(self._claimed_os.value),
-                bfs.DeviceType.DESKTOP,
-            )
-            if not issues:
-                return BrowserProfile(
-                    created_at=self._clock(),
-                    claimed_os=self._claimed_os,
-                    locale=self._locale,
-                    timezone_id=self._timezone_id,
-                    viewport=bfs.derive_viewport(
-                        normalized,
-                        bfs.OperatingSystem(self._claimed_os.value),
-                        bfs.DeviceType.DESKTOP,
-                    ),
-                    fingerprint=normalized,
-                )
-            rejected.extend(issues)
-        raise ProfileGenerationError(
-            f"За {self._max_attempts} спроб не вдалося отримати реалістичний профіль для "
-            f"{self._claimed_os.value}. Типові причини відхилення: {sorted(set(rejected))[:4]}"
+        try:
+            fp = self._generator.generate()
+        except bfs.GenerationError as err:
+            raise ProfileGenerationError(str(err)) from err
+        return BrowserProfile(
+            created_at=self._clock(),
+            claimed_os=self._claimed_os,
+            locale=self._locale,
+            timezone_id=self._timezone_id,
+            viewport=fp.viewport,
+            fingerprint=fp.raw_data,
         )
 
