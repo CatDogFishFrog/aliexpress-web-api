@@ -37,13 +37,13 @@ class FakeProbe:
 
 
 class Harness:
-    """Віртуальний час + «користувач», що діє за сценарієм у певні моменти."""
+    """Virtual clock and a user acting according to a scripted timeline."""
 
     def __init__(self, *, probe_answer: Callable[[float], bool]) -> None:
         self.now = 0.0
         self.page = FakePage(LOGIN_PAGE)
         self.page.redirects[LOGIN_URL] = LOGIN_PAGE
-        self.page.visible_selectors = {SEL.landing_email_button}  # екран входу видно одразу
+        self.page.visible_selectors = {SEL.landing_email_button}  # Login screen is immediately visible.
         self.context = FakeContext()
         self.page.context = self.context  # type: ignore[attr-defined]
         self.probe = FakeProbe(probe_answer)
@@ -84,7 +84,7 @@ def user_goes_home(h: Harness) -> Callable[[], None]:
 
 async def test_already_authenticated_returns_immediately_without_waiting() -> None:
     h = Harness(probe_answer=lambda t: True)
-    h.page.redirects[LOGIN_URL] = HOME  # сторінка входу перекидає геть
+    h.page.redirects[LOGIN_URL] = HOME  # Login page redirects away.
     assert await h.run() is True
     assert h.sleeps == [] and h.probe.calls == []
 
@@ -94,24 +94,24 @@ async def test_waits_for_human_then_confirms_via_probe_and_settles() -> None:
     h.script.append((5.0, user_goes_home(h)))
     assert await h.run() is False
     assert len(h.probe.calls) == 1 and h.probe.calls[0] >= 5.0
-    assert h.sleeps[-1] == 2.0  # пауза «дати cookie дописатись» після підтвердження
+    assert h.sleeps[-1] == 2.0  # Wait for cookies to finish writing after confirmation.
 
 
 async def test_probe_not_called_while_user_is_still_on_login_page() -> None:
     h = Harness(probe_answer=lambda t: True)
     with pytest.raises(ManualLoginTimeoutError):
         await h.run(timeout_s=20)
-    assert h.probe.calls == []  # без ознак входу не навантажуємо сайт перевірками
+    assert h.probe.calls == []  # Avoid probing the site without signs of login.
 
 
 async def test_clicking_logo_to_home_is_not_mistaken_for_login() -> None:
-    """Людина могла просто піти на головну анонімно — це не вхід."""
-    h = Harness(probe_answer=lambda t: t >= 20)  # справжня авторизація настає лише в t=20
+    """A user may navigate to the home page anonymously; that is not a login."""
+    h = Harness(probe_answer=lambda t: t >= 20)  # Authentication succeeds only at t=20.
     h.script.append((4.0, user_goes_home(h)))
     assert await h.run(timeout_s=60) is False
     assert len(h.probe.calls) >= 2 and h.probe.calls[-1] >= 20
     gaps = [b - a for a, b in zip(h.probe.calls, h.probe.calls[1:], strict=False)]
-    assert all(g >= 3.0 for g in gaps)  # перевірки не частіше ніж раз на 3 с
+    assert all(g >= 3.0 for g in gaps)  # Probe at most once every three seconds.
 
 
 async def test_ticket_cookie_triggers_probe_even_on_login_page() -> None:
@@ -130,7 +130,7 @@ async def test_window_closed_by_user_is_clear_error() -> None:
         h.page.closed = True
 
     h.script.append((3.0, close))
-    with pytest.raises(BrowserClosedError, match="закрито"):
+    with pytest.raises(BrowserClosedError, match="closed"):
         await h.run()
 
 

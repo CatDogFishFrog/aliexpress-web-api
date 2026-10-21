@@ -8,16 +8,16 @@ from aliweb.domain.accounts import AccountId
 
 @dataclass(frozen=True, slots=True)
 class DebugOpenResult:
-    """Підсумок ``open_and_dump``: де дамп і з чиєю сесією відкривали сторінку."""
+    """Result of ``open_and_dump``: dump location and session used to open the page."""
 
     dump_dir: str | None
-    account_id: AccountId | None  # чиє середовище використано; None — «чистий» браузер без підміни
-    with_session: bool = False  # чи використано cookie збереженої сесії
-    with_profile: bool = False  # чи застосовано профіль (UA, відбиток…)
+    account_id: AccountId | None  # Account environment used; None means no profile overrides.
+    with_session: bool = False  # Whether saved session cookies were used.
+    with_profile: bool = False  # Whether the browser profile was applied.
 
 
 class PageDebugger(Protocol):
-    """Ручні інструменти дебагу сторінок (для розробки екстракторів)."""
+    """Manual page debugging tools, primarily for extractor development."""
 
     async def open_and_dump(
         self,
@@ -27,10 +27,9 @@ class PageDebugger(Protocol):
         account_id: AccountId | None = None,
         anonymous: bool = False,
     ) -> DebugOpenResult:
-        """Відкриває ``url`` і зберігає діагностичний дамп. НЕ виконує вхід і НЕ змінює збережену сесію.
+        """Open ``url`` and save a diagnostic dump without logging in or changing the saved session.
 
-        Використовується середовище обраного акаунта (``account_id`` або активного): його профіль
-        браузера та, якщо є, cookie збереженої сесії (без перевірки чинності). ``anonymous=True`` —
-        «чистий» браузер без cookie і без підміни середовища.
+        Use the selected (or active) account's browser profile and saved session cookies, if available,
+        without verifying the session. ``anonymous=True`` uses a clean browser with no cookies or overrides.
         """
         ...

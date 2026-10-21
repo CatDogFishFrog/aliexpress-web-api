@@ -1,4 +1,4 @@
-"""Сценарії керування акаунтами: додати, видалити, перейменувати, обрати активний."""
+"""Account use cases: add, remove, rename, and select the active account."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ def utc_now() -> datetime:
 
 
 class AccountService:
-    """Керує набором акаунтів і вказівником на активний."""
+    """Manage accounts and the active account pointer."""
 
     def __init__(
         self,
@@ -42,9 +42,9 @@ class AccountService:
         self._clock = clock
 
     async def add(self, account_id: AccountId, credentials: Credentials | None = None) -> Account:
-        """Додає акаунт. Якщо активного ще немає — новий стає активним."""
+        """Add an account and make it active if no active account exists."""
         if await self._repo.get(account_id) is not None:
-            raise AccountAlreadyExistsError(f"Акаунт {account_id} уже існує")
+            raise AccountAlreadyExistsError(f"Account {account_id} already exists")
         now = self._clock()
         account = Account(id=account_id, created_at=now, updated_at=now, credentials=credentials)
         await self._repo.save(account)
@@ -55,27 +55,29 @@ class AccountService:
     async def get(self, account_id: AccountId) -> Account:
         account = await self._repo.get(account_id)
         if account is None:
-            raise AccountNotFoundError(f"Акаунт {account_id} не знайдено")
+            raise AccountNotFoundError(f"Account {account_id} was not found")
         return account
 
     async def ensure_profile(self, account_id: AccountId) -> Account:
-        """Гарантує, що в акаунта є профіль браузерного середовища (створює й зберігає, якщо немає).
+        """Ensure the account has a browser profile, creating and saving one if needed.
 
-        Профіль створюється ОДИН раз і далі не змінюється — щоб акаунт завжди працював в одному й тому
-        самому «середовищі» (UA, відбиток, мова, часовий пояс, розмір вікна).
+        The profile is created once and remains unchanged so the account always uses the same
+        environment (UA, fingerprint, locale, timezone, and window size).
         """
         account = await self.get(account_id)
         if account.profile is not None:
             return account
-        profile = await asyncio.to_thread(self._profiles.generate)  # CPU-робота, не блокуємо цикл подій
+        # Generate the profile off-thread to keep the event loop responsive.
+        profile = await asyncio.to_thread(self._profiles.generate)
         updated = account.with_profile(profile, now=self._clock())
         await self._repo.save(updated)
-        _log.info("Створено профіль середовища", extra={"account": str(account_id), "profile": profile.label})
+        _log.info("Created browser profile", extra={"account": str(account_id), "profile": profile.label})
         return updated
 
     async def regenerate_profile(self, account_id: AccountId) -> Account:
-        """Примусово створює НОВИЙ профіль (старий втрачається). Існуюча сесія лишається, але вона
-        створена в іншому середовищі — зазвичай варто увійти заново (``login --fresh``)."""
+        """Force creation of a NEW profile, replacing the old one. The existing session remains,
+        but it was created in a different environment; logging in again is usually recommended
+        (``login --fresh``)."""
         account = await self.get(account_id)
         profile = await asyncio.to_thread(self._profiles.generate)
         updated = account.with_profile(profile, now=self._clock())
@@ -89,32 +91,32 @@ class AccountService:
 
     async def remove(self, account_id: AccountId) -> None:
         if not await self._repo.delete(account_id):
-            raise AccountNotFoundError(f"Акаунт {account_id} не знайдено")
+            raise AccountNotFoundError(f"Account {account_id} was not found")
         if await self._active.get() == account_id:
             await self._active.set(None)
 
     async def rename(self, old_id: AccountId, new_id: AccountId) -> Account:
-        """Перейменовує акаунт (зберігає облікові дані й сесію), оновлює активний."""
+        """Rename an account, preserving its credentials and session, and update the active pointer."""
         if old_id == new_id:
             return await self.get(old_id)
         account = await self.get(old_id)
         if await self._repo.get(new_id) is not None:
-            raise AccountAlreadyExistsError(f"Акаунт {new_id} уже існує")
+            raise AccountAlreadyExistsError(f"Account {new_id} already exists")
         renamed = account.with_id(new_id, now=self._clock())
-        await self._repo.save(renamed)  # спочатку зберігаємо нове — втрати даних не буде
+        await self._repo.save(renamed)  # Save the new account first to avoid data loss.
         await self._repo.delete(old_id)
         if await self._active.get() == old_id:
             await self._active.set(new_id)
         return renamed
 
     async def set_active(self, account_id: AccountId) -> None:
-        await self.get(account_id)  # перевірка існування
+        await self.get(account_id)  # Verify that the account exists.
         await self._active.set(account_id)
 
     async def get_active_id(self) -> AccountId | None:
         active = await self._active.get()
         if active is not None and await self._repo.get(active) is None:
-            await self._active.set(None)  # вказівник «завис» (файл видалили ззовні)
+            await self._active.set(None)  # Clear a stale pointer if the file was removed externally.
             return None
         return active
 
@@ -122,7 +124,7 @@ class AccountService:
         active = await self.get_active_id()
         if active is None:
             raise NoActiveAccountError(
-                "Активний акаунт не обрано. Додайте акаунт і виберіть його (`aliweb accounts use <id>`)"
+                "No active account selected. Add an account and select it (`aliweb accounts use <id>`)"
             )
         return active
 

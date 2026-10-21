@@ -94,7 +94,7 @@ class TestAccountService:
         self, accounts: AccountService, repo: MemoryRepository
     ) -> None:
         await accounts.add(A)
-        repo.items.clear()  # файл видалили ззовні
+        repo.items.clear()  # File was removed externally.
         assert await accounts.get_active_id() is None
 
     async def test_summaries_hide_secrets(self, accounts: AccountService) -> None:
@@ -149,16 +149,16 @@ class TestAuthService:
         await accounts.add(A, CREDS)
         clock = [0.0]
         auth = self.make(accounts, repo, fake, clock)
-        await auth.ensure_session(A)  # немає сесії → вхід
+        await auth.ensure_session(A)  # No session; log in.
         assert len(fake.login_calls) == 1 and fake.validity_checks == 0
-        await auth.ensure_session(A)  # у межах TTL → без перевірки
+        await auth.ensure_session(A)  # Within TTL; do not verify again.
         assert fake.validity_checks == 0
         clock[0] = 500
-        await auth.ensure_session(A)  # TTL минув → перевірка, сесія дійсна
+        await auth.ensure_session(A)  # TTL expired; verify the session.
         assert fake.validity_checks == 1 and len(fake.login_calls) == 1
         clock[0] = 1000
         fake.valid = False
-        await auth.ensure_session(A)  # недійсна → повторний вхід
+        await auth.ensure_session(A)  # Invalid session; log in again.
         assert len(fake.login_calls) == 2
 
     async def test_default_login_mode_is_none_scraper_mode(
@@ -171,7 +171,7 @@ class TestAuthService:
     async def test_auto_relogin_uses_scraper_browser_never_a_real_browser(
         self, accounts: AccountService, repo: MemoryRepository, fake: FakeAuthenticator
     ) -> None:
-        """Автоматичний повторний вхід під час скрапінгу — лише браузер patchright."""
+        """Automatic re-login during scraping always uses patchright."""
         await accounts.add(A, CREDS)
         await self.make(accounts, repo, fake, [0]).ensure_session(A, headless=False)
         mode = fake.login_calls[0].mode
@@ -180,7 +180,7 @@ class TestAuthService:
     async def test_manual_login_does_not_need_credentials(
         self, accounts: AccountService, repo: MemoryRepository, fake: FakeAuthenticator
     ) -> None:
-        await accounts.add(A)  # акаунт без логіну/пароля
+        await accounts.add(A)  # Account has no login credentials.
         mode = LoginMode(headless=False, manual=True)
         result = await self.make(accounts, repo, fake, [0]).login(A, mode=mode)
         assert result.session is not None and repo.items[A].session is not None
@@ -249,12 +249,12 @@ class TestTransfer:
         self, service: SessionTransferService, repo: MemoryRepository
     ) -> None:
         repo.items[A] = make_account("a", session=make_session("old"))
-        blob = await service.export_bytes(A)  # без пароля
+        blob = await service.export_bytes(A)  # Exclude credentials.
         repo.items[A] = make_account("a", session=make_session("old"))
         with pytest.raises(AccountAlreadyExistsError):
             await service.import_bytes(blob)
         merged = await service.import_bytes(blob, overwrite=True)
-        assert merged.credentials is not None  # пароль існуючого акаунта не стертий
+        assert merged.credentials is not None  # Existing credentials are preserved.
 
     async def test_passphrase_protects_bundle(
         self, service: SessionTransferService, repo: MemoryRepository
@@ -262,12 +262,12 @@ class TestTransfer:
         repo.items[A] = make_account("a", session=make_session())
         blob = await service.export_bytes(A, passphrase=Secret("transfer-passphrase-1"))
         with pytest.raises(DecryptionError):
-            await service.import_bytes(blob)  # ключ із .env не підходить
+            await service.import_bytes(blob)  # Key from .env does not match.
         repo.items.clear()
         assert (await service.import_bytes(blob, passphrase=Secret("transfer-passphrase-1"))).id == A
 
     async def test_vault_blob_is_not_importable_as_bundle(self, service: SessionTransferService) -> None:
-        """Різний AAD: файл сховища не можна підсунути як експортний пакет."""
+        """Different AAD prevents using a vault file as an export bundle."""
         from aliweb.application.codec import encode_account
         from aliweb.infrastructure.storage.file_repository import VAULT_AAD
 

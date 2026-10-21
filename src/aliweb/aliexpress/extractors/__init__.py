@@ -1,5 +1,5 @@
-"""Екстрактори: перетворюють відкриту сторінку на доменні моделі.
+"""Extractors convert opened pages into domain models.
 
-Це «шов» для майбутньої роботи: коли дослідимо сайт, реалізуємо лише ці класи —
-решта архітектури (навігація, сесії, діагностика, сервіси) уже готова.
+This is the extension point for future work: implement these classes as the site is explored;
+the rest of the architecture (navigation, sessions, diagnostics, and services) is ready.
 """

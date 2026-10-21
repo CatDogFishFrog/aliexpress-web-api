@@ -1,8 +1,7 @@
-"""Канонізація посилань на сутності AliExpress.
+"""Canonicalization of AliExpress entity URLs.
 
-Посилання — це ідентифікатор товару/продавця (рішення проєкту). Щоб одне й те саме
-посилання не мало кількох «облич», видаляємо трекінгові параметри, фрагмент, нормалізуємо
-схему/хост і порядок параметрів.
+URLs identify products and sellers. To give equivalent URLs one canonical form, remove tracking
+parameters and fragments, normalize the scheme and host, and sort query parameters.
 """
 
 from __future__ import annotations
@@ -25,19 +24,19 @@ _ITEM_ID_RE = re.compile(r"/item/(\d+)\.html")
 
 
 class InvalidEntityUrlError(AliWebError, ValueError):
-    """Посилання не є коректним посиланням AliExpress."""
+    """The URL is not a valid AliExpress URL."""
 
 
 def canonicalize_url(raw: str) -> str:
-    """Повертає канонічний вигляд посилання AliExpress.
+    """Return the canonical form of an AliExpress URL.
 
     Raises:
-        InvalidEntityUrlError: якщо це не http(s)-посилання на домен aliexpress.*.
+        InvalidEntityUrlError: if this is not an HTTP(S) URL on an aliexpress.* domain.
     """
     parts = urlsplit(raw.strip())
     host = (parts.hostname or "").lower()
     if parts.scheme.lower() not in {"http", "https"} or not _HOST_RE.search(host):
-        raise InvalidEntityUrlError(f"Не посилання AliExpress: {raw!r}")
+        raise InvalidEntityUrlError(f"Not an AliExpress URL: {raw!r}")
 
     query = sorted(
         (k, v)
@@ -48,6 +47,6 @@ def canonicalize_url(raw: str) -> str:
 
 
 def extract_item_id(url: str) -> str | None:
-    """Допоміжно: числовий id з ``/item/<id>.html``. НЕ є ідентифікатором сутності."""
+    """Return the numeric ID from ``/item/<id>.html``; this is not the entity identifier."""
     match = _ITEM_ID_RE.search(urlsplit(url).path)
     return match.group(1) if match else None

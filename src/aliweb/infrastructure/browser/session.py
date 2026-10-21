@@ -1,4 +1,4 @@
-"""Браузерна сесія: контекст + сторінка + запис мережі + авто-діагностика при помилці."""
+"""Browser session: context, page, network recording, and automatic diagnostics on errors."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ _log = logging.getLogger(__name__)
 
 
 def is_target_closed(error: BaseException) -> bool:
-    """Чи помилка означає, що сторінку/контекст/браузер закрито (напр. користувач закрив вікно)."""
+    """Whether the error indicates a closed page, context, or browser."""
     return type(error).__name__ == "TargetClosedError"
 
 
@@ -40,15 +40,15 @@ def build_context_options(
     profile: BrowserProfile | None = None,
     browser_version: str | None = None,
 ) -> dict[str, Any]:
-    """Параметри ``browser.new_context``. Чиста функція.
+    """Build ``browser.new_context`` options as a pure function.
 
-    Без профілю (напр. ``debug open --anonymous``) User-Agent не підміняється — працює «чистий» браузер.
-    З профілем акаунта середовище повністю береться з нього (UA, мова, часовий пояс, вікно, екран, DPR,
-    client hints) і перекриває загальні налаштування ``ALIWEB_LOCALE/TIMEZONE/VIEWPORT``.
+    Without a profile (for example, ``debug open --anonymous``), use the browser's native User-Agent.
+    With an account profile, use its UA, locale, timezone, window, screen, DPR, and client hints,
+    overriding the general ``ALIWEB_LOCALE/TIMEZONE/VIEWPORT`` settings.
     """
     options: dict[str, Any] = {
         "locale": settings.locale,
-        "service_workers": "block",  # SW можуть обходити маршрутизацію та засмічувати дампи
+        "service_workers": "block",  # Service workers may bypass routing and clutter diagnostic dumps.
         "accept_downloads": False,
     }
     if settings.viewport is None:
@@ -67,7 +67,7 @@ def build_context_options(
 
 
 class BrowserSession:
-    """Обгортка над контекстом із потрібним проєкту поведінкою. Створюється фабрикою."""
+    """Browser context wrapper with project-specific behavior, created by the factory."""
 
     def __init__(
         self,
@@ -88,20 +88,20 @@ class BrowserSession:
         return dict(await self._context.storage_state())
 
     async def checkpoint(self, name: str) -> None:
-        """Контрольна точка потоку; дамп лише при ``ALIWEB_DUMP_POLICY=always``."""
+        """Capture a flow checkpoint only when ``ALIWEB_DUMP_POLICY=always``."""
         await self._diagnostics.checkpoint(self.page, name, self.recorder)
 
     async def dump(self, reason: str) -> None:
-        """Примусовий дамп (для ручного дебагу)."""
+        """Capture diagnostics on demand for manual debugging."""
         await self._diagnostics.capture(self.page, reason=reason, recorder=self.recorder)
 
     async def on_error(self, error: BaseException) -> None:
         if self.page.is_closed():
-            return  # вікно закрито — знімати вже нічого, дамп лише засмітить теку
+            return  # Nothing can be captured after the browser window closes.
         path = await self._diagnostics.on_error(self.page, error, self.recorder)
         if path is None:
             return
-        error.add_note(f"Діагностика: {path}")
+        error.add_note(f"Diagnostics: {path}")
         if isinstance(error, AliWebError):
             error.diagnostics_dir = str(path)
 
@@ -135,14 +135,13 @@ class BrowserSessionFactory:
         browser: BrowserChoice | None = None,
         profile: BrowserProfile | None = None,
     ) -> AsyncIterator[BrowserSession]:
-        """Відкриває ізольований контекст (cookie з ``storage_state``) і сторінку.
+        """Open an isolated browser context (cookies from ``storage_state``) and a page.
 
-        ``browser=None`` — браузер patchright (так працює скрапер); інший браузер лише для входу.
-        ``profile`` — постійне середовище акаунта: UA, відбиток, мова, часовий пояс, вікно (див.
-        ``fingerprint.py``). ``None`` — «чистий» браузер без підміни.
+        ``browser=None`` selects patchright, as used by the scraper; other browsers are for login only.
+        ``profile`` is the persistent account environment. ``None`` uses the browser without overrides.
 
-        При винятку: зберігає діагностику, додає до помилки примітку зі шляхом, а сторонні
-        помилки patchright перетворює на :class:`ScrapingError`. Контекст завжди закривається.
+        On failure, save diagnostics, add their path to the error, and convert patchright errors to
+        :class:`ScrapingError`. Always close the context.
         """
         launched = await self._pool.get(headless, browser)
         browser_version = launched.version
@@ -170,16 +169,16 @@ class BrowserSessionFactory:
             await session.on_error(exc)
             if isinstance(exc, PlaywrightError) and is_target_closed(exc):
                 raise BrowserClosedError(
-                    "Вікно браузера закрито до завершення операції. "
-                    "Не закривайте його вручну, поки програма працює."
+                    "Browser window closed before the operation completed. "
+                    "Do not close it manually while the program is running."
                 ) from exc
             if isinstance(exc, PlaywrightError):
                 converted = ScrapingError(f"{type(exc).__name__}: {exc}")
                 converted.diagnostics_dir = next(
                     (
-                        n.removeprefix("Діагностика: ")
+                        n.removeprefix("Diagnostics: ")
                         for n in getattr(exc, "__notes__", [])
-                        if n.startswith("Діагностика: ")
+                        if n.startswith("Diagnostics: ")
                     ),
                     None,
                 )

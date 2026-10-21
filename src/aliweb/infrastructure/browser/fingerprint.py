@@ -1,12 +1,12 @@
-"""Створення та застосування постійного профілю браузерного середовища акаунта.
+"""Create and apply a persistent browser environment profile for an account.
 
-Базується на автономному пакеті ``browserforge-stealth`` (модуль ``browserforge_stealth``),
-що інкапсулює алгоритми генерації, санітизації (нормалізації), фільтрації реалістичності (rejection sampling),
-Chromium GREASE-брендів та динамічного retargeting під версію рушія.
+Based on the standalone ``browserforge-stealth`` package (``browserforge_stealth`` module), which
+provides generation, sanitization, realism filtering (rejection sampling), Chromium GREASE brands,
+and dynamic retargeting to the browser engine version.
 
-Цей модуль виступає адаптером між ``browserforge-stealth`` та доменною моделлю ``BrowserProfile``.
-Профіль зберігається в акаунті й незмінний: щодня та сама ОС, екран, GPU, мова, часовий пояс.
-Версія Chromium у User-Agent та client hints підганяється під реальний рушій при кожному запуску.
+This module adapts ``browserforge-stealth`` to the ``BrowserProfile`` domain model. The profile is
+stored with the account and remains stable across runs. Chromium's User-Agent and client hints are
+retargeted to the actual engine version on each launch.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ _log = logging.getLogger(__name__)
 
 
 def host_os() -> ClaimedOs:
-    """Визначає ОС хоста."""
+    """Detect the host operating system."""
     plat = sys.platform
     if plat == "darwin":
         return ClaimedOs.MACOS
@@ -38,47 +38,47 @@ def host_os() -> ClaimedOs:
 
 
 def chromium_brands(major: int, full_version: str | None = None) -> list[tuple[str, str]]:
-    """Список брендів ``navigator.userAgentData.brands`` рівно так, як його будує Chromium."""
+    """Return ``navigator.userAgentData.brands`` as constructed by Chromium."""
     return bfs.chromium_brands(major, full_version)
 
 
 def sec_ch_ua(brands: list[tuple[str, str]]) -> str:
-    """Форматує список брендів у значення HTTP-заголовка Sec-CH-UA."""
+    """Format brand data as an HTTP Sec-CH-UA header value."""
     return bfs.sec_ch_ua(brands)
 
 
 def build_user_agent(claimed_os: ClaimedOs, major: int) -> str:
-    """Скорочений (reduced) UA сучасного Chrome: ``Chrome/<major>.0.0.0``."""
+    """Return a reduced User-Agent for modern Chrome: ``Chrome/<major>.0.0.0``."""
     return bfs.build_user_agent(bfs.OperatingSystem(claimed_os.value), major, bfs.DeviceType.DESKTOP)
 
 
 def parse_browser_version(version: str | None, fallback_ua: str = "") -> tuple[int, str]:
-    """``(major, full_version)``. Якщо версія рушія невідома — береться з наявного UA."""
+    """Return ``(major, full_version)``; use the existing UA if the engine version is unknown."""
     return bfs.parse_browser_version(version, fallback_ua)
 
 
 def normalize_languages(locale: str) -> tuple[list[str], str]:
-    """``(navigator.languages, Accept-Language)`` у форматі Chrome."""
+    """Return ``(navigator.languages, Accept-Language)`` in Chrome format."""
     return bfs.normalize_languages(locale)
 
 
 def realism_issues(fingerprint: Mapping[str, Any], claimed_os: ClaimedOs) -> list[str]:
-    """Чому відбиток вважається нереалістичним (порожній список — усе гаразд)."""
+    """Explain why the fingerprint is unrealistic; an empty list means it is valid."""
     return bfs.realism_issues(fingerprint, bfs.OperatingSystem(claimed_os.value), bfs.DeviceType.DESKTOP)
 
 
 def derive_viewport(fingerprint: Mapping[str, Any], claimed_os: ClaimedOs) -> tuple[int, int]:
-    """Внутрішній розмір вікна: максимізоване вікно мінус інтерфейс браузера."""
+    """Inner window size: maximized window minus browser chrome."""
     return bfs.derive_viewport(fingerprint, bfs.OperatingSystem(claimed_os.value), bfs.DeviceType.DESKTOP)
 
 
 def retarget(profile: BrowserProfile, browser_version: str | None) -> dict[str, Any]:
-    """Копія відбитка з UA, брендами й client hints, узгодженими з РЕАЛЬНОЮ версією рушія."""
+    """Copy the fingerprint with UA, brands, and client hints matched to the actual engine version."""
     return bfs.retarget(_to_bfs_fingerprint(profile), browser_version)
 
 
 def client_hint_headers(profile: BrowserProfile, major: int) -> dict[str, str]:
-    """HTTP-заголовки, які справжній Chrome шле сам (low-entropy client hints) + Accept-Language."""
+    """HTTP headers sent by Chrome itself: low-entropy client hints and Accept-Language."""
     return bfs.client_hint_headers(bfs.OperatingSystem(profile.claimed_os.value), profile.locale, major)
 
 
@@ -96,12 +96,12 @@ def _to_bfs_fingerprint(profile: BrowserProfile) -> bfs.Fingerprint:
 
 
 def profile_context_options(profile: BrowserProfile, browser_version: str | None) -> dict[str, Any]:
-    """Параметри ``browser.new_context``, що фіксують середовище з профілю."""
+    """``browser.new_context`` options that apply the profile environment."""
     return bfs.context_options(_to_bfs_fingerprint(profile), browser_version)
 
 
 def build_init_script(profile: BrowserProfile, browser_version: str | None) -> str:
-    """JS, що підміняє navigator/screen/WebGL/userAgentData тощо ще до скриптів сторінки."""
+    """JavaScript that overrides navigator, screen, WebGL, and userAgentData before page scripts run."""
     return bfs.build_init_script(_to_bfs_fingerprint(profile), browser_version)
 
 
@@ -110,29 +110,29 @@ async def apply_profile(
     profile: BrowserProfile,
     browser_version: str | None,
 ) -> None:
-    """Впроваджує відбиток у контекст (init-скрипт). Решта — через :func:`profile_context_options`."""
+    """Inject the fingerprint into the context. Other options come from :func:`profile_context_options`."""
     await context.add_init_script(build_init_script(profile, browser_version))
 
 
 def warn_on_environment_drift(
     profile: BrowserProfile, *, configured_locale: str, current_os: ClaimedOs | None = None
 ) -> None:
-    """Попереджає, якщо реальне оточення розходиться з профілем (профіль при цьому НЕ змінюється)."""
+    """Warn if the host differs from the profile; the profile itself is never modified."""
     here = current_os or host_os()
     if profile.claimed_os is not here:
         _log.warning(
-            "Профіль заявляє іншу ОС, ніж хост: можливі розбіжності (шрифти, GPU, рендеринг)",
+            "Profile OS differs from host OS; fonts, GPU, or rendering may not match",
             extra={"profile_os": profile.claimed_os.value, "host_os": here.value},
         )
     if profile.locale.lower() != configured_locale.lower():
         _log.warning(
-            "Мова профілю відрізняється від ALIWEB_LOCALE; діє мова профілю (середовище не змінюється)",
+            "Profile locale differs from ALIWEB_LOCALE; the profile locale remains in effect",
             extra={"profile_locale": profile.locale, "configured": configured_locale},
         )
 
 
 class BrowserForgeStealthProfileGenerator:
-    """Реалізує порт ``ProfileGenerator`` поверх browserforge-stealth."""
+    """Implement the ``ProfileGenerator`` port using browserforge-stealth."""
 
     def __init__(
         self,
@@ -151,7 +151,7 @@ class BrowserForgeStealthProfileGenerator:
         self._generator: bfs.FingerprintGenerator | None = None
 
     def generate(self) -> BrowserProfile:
-        """Новий реалістичний профіль. Відкидає нереалістичні зразки й генерує, доки не вийде хороший."""
+        """Generate a realistic profile, rejecting unrealistic samples until one passes validation."""
         if self._generator is None:
             self._generator = bfs.FingerprintGenerator(
                 os=bfs.OperatingSystem(self._claimed_os.value),

@@ -1,4 +1,4 @@
-"""Файлове сховище акаунтів: один зашифрований файл ``<id>.bin`` на акаунт."""
+"""File-backed account storage with one encrypted ``<id>.bin`` file per account."""
 
 from __future__ import annotations
 
@@ -12,13 +12,13 @@ from aliweb.domain.accounts import Account, AccountId
 from aliweb.domain.errors import AliWebError, InvalidAccountIdError, StorageError
 from aliweb.infrastructure.storage.files import atomic_write_private, ensure_private_dir, read_bytes
 
-#: AAD прив'язує шифротекст до типу файлу сховища (а не до експортного пакета).
+#: AAD binds ciphertext to the vault file type rather than an export bundle.
 VAULT_AAD = b"aliweb.vault.v1"
 _SUFFIX = ".bin"
 
 
 class FileAccountRepository:
-    """Реалізує ``AccountRepository``. Припущення: один процес (див. memory/04)."""
+    """Implement ``AccountRepository``. Assumes a single process (see memory/04)."""
 
     def __init__(self, root: Path, cipher: Cipher) -> None:
         self._root = root
@@ -34,7 +34,7 @@ class FileAccountRepository:
         ids: list[AccountId] = []
         for path in self._root.glob(f"*{_SUFFIX}"):
             with contextlib.suppress(InvalidAccountIdError):
-                ids.append(AccountId(path.stem))  # сторонні файли ігноруємо
+                ids.append(AccountId(path.stem))  # Ignore unrelated files.
         return ids
 
     async def get(self, account_id: AccountId) -> Account | None:
@@ -46,9 +46,9 @@ class FileAccountRepository:
             plaintext = await asyncio.to_thread(self._cipher.decrypt, blob, aad=VAULT_AAD)
             account = decode_account(plaintext)
         except AliWebError as exc:
-            raise StorageError(f"Не вдалося завантажити акаунт {account_id}: {exc}") from exc
+            raise StorageError(f"Failed to load account {account_id}: {exc}") from exc
         if account.id != account_id:
-            raise StorageError(f"Файл {path.name} містить акаунт {account.id} (очікувався {account_id})")
+            raise StorageError(f"File {path.name} contains account {account.id} (expected {account_id})")
         return account
 
     async def save(self, account: Account) -> None:
@@ -66,12 +66,12 @@ class FileAccountRepository:
             except FileNotFoundError:
                 return False
             except OSError as exc:
-                raise StorageError(f"Не вдалося видалити {path}: {exc}") from exc
+                raise StorageError(f"Failed to delete {path}: {exc}") from exc
             return True
 
 
 class FileActiveAccountStore:
-    """Реалізує ``ActiveAccountStore``: id активного акаунта в простому файлі (без секретів)."""
+    """Implement ``ActiveAccountStore`` using a plain file containing the active account ID."""
 
     def __init__(self, path: Path) -> None:
         self._path = path

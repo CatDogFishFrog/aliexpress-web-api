@@ -1,8 +1,8 @@
-"""Усі селектори AliExpress — в одному місці (змінилась верстка → правимо тут).
+"""All AliExpress selectors in one place; update them here when the site layout changes.
 
-Походження: потік входу перенесено з проєкту ali-coins (libs/selectors.js). Текстові
-селектори (``has-text``) залежать від мови інтерфейсу; тут залишено en та pt, як в оригіналі.
-CSS-селектори мовно-незалежні — віддаємо їм перевагу.
+Origin: the login flow was adapted from ali-coins (libs/selectors.js). Text selectors (``has-text``)
+depend on the interface language; English and Portuguese variants are retained from the original.
+Prefer language-independent CSS selectors where possible.
 """
 
 from __future__ import annotations
@@ -12,30 +12,30 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class LoginSelectors:
-    """Селектори сторінки входу ``/p/ug-login-page/login.html``.
+    """Selectors for the ``/p/ug-login-page/login.html`` page.
 
-    Підтверджено дампами (жовтень 2026): сторінка має ДВА стани.
-      * LANDING — «Register by passkey»: кнопки Register / «Already have an account?» /
-        «Sign in with email/phone» (aria-label="init") / Facebook / Twitter; поля входу немає.
-      * Форма входу: ``input#account`` (e-mail/телефон) і ``input#fm-login-password``; на кроці пароля
-        поле логіну лишається видимим, з'являється кнопка «Back» і «Sign in» (aria-label="Sign in").
-    Класи на кшталт ``my-account--text--2Yt_prE`` — хеші CSS-модулів, тому лише префіксні селектори.
+        Dumps from October 2026 confirm two page states:
+            * LANDING — "Register by passkey" with Register, "Already have an account?", "Sign in with
+                email/phone" (aria-label="init"), Facebook, and Twitter buttons; no login fields.
+            * Login form — ``input#account`` (email/phone) and ``input#fm-login-password``. On the password
+                step the login field remains visible, along with "Back" and "Sign in" buttons.
+        CSS module classes such as ``my-account--text--2Yt_prE`` are hashes, so use prefix selectors only.
     """
 
-    # Поле логіну. Перші — підтверджені; решта — з ali-coins (мобільний/старий потік).
+    # Login field. The first selectors are confirmed; the rest come from ali-coins legacy/mobile flows.
     username_input: str = (
         '#account, input[name="account"], input[autocomplete~="username"], '
         '#fm-login-id, input[name="loginId"], input.cosmos-input[type="email"], '
         'input.cosmos-input[type="text"], input[type="email"][name*="login" i]'
     )
-    password_input: str = 'input[type="password"], #fm-login-password'  # noqa: S105 — CSS-селектор
-    # Стартовий екран (LANDING)
+    password_input: str = 'input[type="password"], #fm-login-password'  # noqa: S105 — CSS selector.
+    # Landing screen.
     landing_email_button: str = (
         'button[aria-label="init"], button:has-text("Sign in with email/phone"), '
         'button:has-text("email/phone")'
     )
     landing_existing_account_button: str = 'button[aria-label="Already have an account?"]'
-    # Кнопка кроку «логін → далі» (мітка не підтверджена; fallback — Enter у полі).
+    # Continue button; its label is unconfirmed, so Enter is the fallback.
     continue_button: str = (
         'button.cosmos-btn-primary, button:has-text("Continue"), button:has-text("Continuar")'
     )
@@ -43,7 +43,7 @@ class LoginSelectors:
         'button[aria-label="Sign in"], button.cosmos-btn-primary, button[type="submit"], '
         'button:has-text("Sign in"), button:has-text("Entrar")'
     )
-    # 2FA: лише специфічні селектори (загальні `name*=code` давали хибні спрацювання).
+    # Use specific 2FA selectors; generic `name*=code` selectors caused false positives.
     two_factor_input: str = (
         '#fm-login-code, input[name="checkCode"], input[autocomplete="one-time-code"], '
         'input[placeholder*="verification code" i], '
@@ -53,12 +53,12 @@ class LoginSelectors:
         'button[type="submit"], button.cosmos-btn-primary, '
         'button:has-text("Confirm"), button:has-text("Verify")'
     )
-    # Слайдер nocaptcha всередині iframe baxia punish (підтверджено дампом).
+    # Nocaptcha slider inside the baxia punish iframe (confirmed by a page dump).
     slider_handle: str = '#nc_1_n1z, .btn_slide, span[class*="btn_slide"], div[id*="nocaptcha"] .btn_slide'
     slider_track: str = '#nc_1__n1t, .nc_scale, #nc_1__scale_text, div[id*="nocaptcha"]'
     slider_loading: str = "#nc_1__n1t_loading, .nc-loading-circle"
     captcha_close: str = ".baxia-dialog-close"
-    # Маркер авторизованої шапки головної: «Hi, <ім'я>» (текст залежить від мови).
+    # Authenticated home page header marker; text depends on the selected language.
     home_account_marker: str = '[class*="my-account--text"]'
 
 

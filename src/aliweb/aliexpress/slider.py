@@ -1,8 +1,8 @@
-"""Проходження слайдер-капчі (nocaptcha) людиноподібним перетягуванням.
+"""Solve the nocaptcha slider with a human-like drag.
 
-Слайдер живе в iframe діалогу baxia punish (``…/_____tmd_____/punish?…action=captcha``) і
-завантажується приблизно 3 с ПІСЛЯ відповіді з RGV587 (спершу видно «Loading»). Тому солвер
-спочатку ЧЕКАЄ появи ручки, і лише потім тягне її.
+The slider lives in the baxia punish dialog iframe (``…/_____tmd_____/punish?…action=captcha``)
+and loads about three seconds after an RGV587 response (the dialog initially shows "Loading").
+Wait for the handle to appear before dragging it.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ type Target = Page | Frame
 
 
 def ease_in_out(progress: float) -> float:
-    """Квадратичне пришвидшення-сповільнення, ``progress`` в [0, 1]."""
+    """Quadratic acceleration and deceleration for ``progress`` in [0, 1]."""
     return 2 * progress * progress if progress < 0.5 else -1 + (4 - 2 * progress) * progress
 
 
@@ -37,11 +37,11 @@ class SliderSolver:
         poll_s: float = 0.2,
     ) -> None:
         self._sel = selectors
-        self._rng = rng or random.Random()  # noqa: S311 — не криптографія
+        self._rng = rng or random.Random()  # noqa: S311 — not used for cryptography.
         self._poll_s = poll_s
 
     def _targets(self, page: Page) -> list[Target]:
-        """Головна сторінка + iframe-и капчі (решту фреймів — реклама, аналітика — не скануємо)."""
+        """Return the main page and captcha iframes, excluding unrelated ad and analytics frames."""
         frames = [f for f in page.frames if f != page.main_frame and "punish" in f.url]
         return [page, *frames]
 
@@ -55,7 +55,7 @@ class SliderSolver:
                 if box is not None:
                     return target, handle, box
             except Exception:
-                _log.debug("Помилка пошуку слайдера в цілі", exc_info=True)
+                _log.debug("Failed to locate slider handle", exc_info=True)
         return None
 
     async def _wait_for_handle(
@@ -75,20 +75,20 @@ class SliderSolver:
             if box is not None and box["width"] > handle_box["width"] + 40:
                 return float(box["width"])
         except Exception:
-            _log.debug("Не вдалося виміряти доріжку слайдера", exc_info=True)
-        return 300.0  # типова ширина nocaptcha
+            _log.debug("Failed to measure slider track", exc_info=True)
+        return 300.0  # Typical nocaptcha track width.
 
     async def solve(self, page: Page, human: HumanInput, *, timeout_s: float = 12.0) -> bool:
-        """Чекає слайдер і проходить його. ``True`` — лише якщо капча справді зникла."""
+        """Wait for and solve the slider. Return ``True`` only if the captcha disappears."""
         found = await self._wait_for_handle(page, timeout_s)
         if found is None:
-            _log.warning("Слайдер не з'явився за %.0f с", timeout_s)
+            _log.warning("Slider did not appear within %.0f seconds", timeout_s)
             return False
         target, _handle, box = found
-        _log.info("Слайдер завантажено, проходжу")
-        await human.pause(0.35, 0.9)  # людина спершу «бачить» завдання
+        _log.info("Slider loaded; solving challenge")
+        await human.pause(0.35, 0.9)  # Allow time to inspect the challenge.
         distance = max(40.0, await self._track_width(target, box) - box["width"])
-        distance += self._rng.uniform(1.0, 6.0)  # ручку зупиняє межа доріжки
+        distance += self._rng.uniform(1.0, 6.0)  # The track boundary stops the handle.
         await human.drag_horizontally((box["x"] + box["width"] / 2, box["y"] + box["height"] / 2), distance)
         return await self._wait_until_solved(page)
 

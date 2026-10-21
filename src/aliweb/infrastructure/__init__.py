@@ -1,4 +1,4 @@
-"""Інфраструктура: конфігурація, логування, шифрування, файлове сховище, браузер, діагностика.
+"""Infrastructure: configuration, logging, encryption, file storage, browser, and diagnostics.
 
-Реалізує порти ``application``. Єдиний шар, що читає змінні середовища (через ``config``).
+Implements ``application`` ports. The only layer that reads environment variables (through ``config``).
 """

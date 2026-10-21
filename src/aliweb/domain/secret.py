@@ -1,4 +1,4 @@
-"""Обгортка для секретних рядків, що не «протікає» в логи та repr."""
+"""Secret string wrapper that prevents values from leaking into logs or reprs."""
 
 from __future__ import annotations
 
@@ -6,10 +6,9 @@ import hmac
 
 
 class Secret:
-    """Тримає чутливе значення. ``repr``/``str`` завжди маскують його.
+    """Hold a sensitive value. ``repr`` and ``str`` always mask it.
 
-    Доступ до значення — лише явним :meth:`reveal`, щоб кожне використання було помітним
-    під час код-рев'ю.
+    Access the value only through explicit :meth:`reveal` calls, making each use visible in code review.
     """
 
     __slots__ = ("_value",)
@@ -37,7 +36,7 @@ class Secret:
         return hmac.compare_digest(self._value.encode(), other._value.encode())
 
     def __hash__(self) -> int:
-        raise TypeError("Secret не хешується (щоб не потрапляти в множини/ключі словників)")
+        raise TypeError("Secret values are not hashable")
 
     def __reduce__(self) -> str:
-        raise TypeError("Secret не можна серіалізувати через pickle")
+        raise TypeError("Secret values cannot be pickled")

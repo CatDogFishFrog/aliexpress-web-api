@@ -1,7 +1,7 @@
-"""Реалізації портів ``CatalogGateway``/``SellerGateway`` через скрапінг.
+"""Scraping implementations of the ``CatalogGateway`` and ``SellerGateway`` ports.
 
-Тут лише оркестрація: взяти автентифіковану сторінку → відкрити URL → віддати екстрактору.
-Уся специфіка сайту — в екстракторах, URL-білдері та селекторах.
+Only orchestration belongs here: get an authenticated page, open a URL, and pass it to an extractor.
+Site-specific details belong in extractors, the URL builder, and selectors.
 """
 
 from __future__ import annotations

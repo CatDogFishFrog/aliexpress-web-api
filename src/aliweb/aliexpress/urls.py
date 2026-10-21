@@ -1,4 +1,4 @@
-"""Побудова URL AliExpress (пошук тощо). Чисті функції без браузера."""
+"""Build AliExpress URLs such as search URLs using pure functions without a browser."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from urllib.parse import urlencode
 
 from aliweb.domain.catalog import SearchQuery, SortOrder
 
-# Значення параметра SortType. НЕ ПЕРЕВІРЕНО на живому сайті (див. memory/11-open-questions.md).
+# SortType values are unverified on the live site (see memory/11-open-questions.md).
 _SORT_PARAM: dict[SortOrder, str] = {
     SortOrder.ORDERS: "total_tranpro_desc",
     SortOrder.PRICE_ASC: "price_asc",
@@ -23,5 +23,5 @@ class AliExpressUrls:
         params: dict[str, str] = {"SearchText": query.text.strip(), "page": str(query.page)}
         if query.sort is not None and query.sort in _SORT_PARAM:
             params["SortType"] = _SORT_PARAM[query.sort]
-        params.update(query.filters)  # вільні фільтри адаптера (напр. minPrice/maxPrice)
+        params.update(query.filters)  # Adapter-specific filters, such as minPrice/maxPrice.
         return f"{self._base}/wholesale?{urlencode(params)}"

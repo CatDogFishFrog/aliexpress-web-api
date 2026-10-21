@@ -1,8 +1,8 @@
-"""Ручний вхід: автоматизація вимкнена, програма лише чекає, поки людина увійде сама.
+"""Manual login: automation is disabled and the program waits for the user to sign in.
 
-Після успіху (див. :meth:`ManualLoginFlow.run`) сесію забирає ``AliExpressAuthenticator``, а
-браузер закривається. Підходить для випадків, коли автоматичний вхід блокує антибот: людина
-проходить капчу/пасскі/QR/соцмережі сама. Рекомендується з реальним Chrome/Edge (``--browser``).
+After successful login, ``AliExpressAuthenticator`` captures the session and closes the browser.
+Useful when automated login is blocked and the user must solve a captcha or use a passkey, QR code,
+or social login. A regular Chrome or Edge browser is recommended (``--browser``).
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ _ACTIONABLE = {
     LoginScreen.CAPTCHA,
 }
 _PROBE_INTERVAL_S = 3.0
-_SETTLE_AFTER_SUCCESS_S = 2.0  # дати сторінці дописати cookie (mtop cookie.render тощо)
+_SETTLE_AFTER_SUCCESS_S = 2.0  # Allow the page to finish writing cookies.
 
 
 class ManualLoginFlow:
@@ -52,28 +52,28 @@ class ManualLoginFlow:
         self._clock = clock
 
     async def run(self, session: BrowserSession, *, timeout_s: float) -> bool:
-        """Відкриває сторінку входу й чекає на ручний вхід.
+        """Open the login page and wait for the user to sign in.
 
-        Success визначається НАДІЙНО, а не за самим фактом переходу зі сторінки входу (людина
-        могла просто клацнути логотип): коли є ознаки входу, у НОВІЙ вкладці перевіряється, що
-        сторінка входу перекидає геть (так поводиться лише авторизований акаунт).
+        Confirm success reliably rather than relying on navigation away from the login page, which
+        could happen if the user only clicked the logo. Once there are signs of login, check in a
+        new tab that the login page redirects away, as it does for authenticated accounts.
 
         Returns:
-            ``True`` — акаунт уже був авторизований до початку (чекати не довелось).
+            ``True`` if the account was already authenticated before waiting began.
 
         Raises:
-            ManualLoginTimeoutError: вхід не завершено за ``timeout_s``.
-            BrowserClosedError: вікно закрито до завершення входу.
+            ManualLoginTimeoutError: login did not complete within ``timeout_s``.
+            BrowserClosedError: browser window closed before login completed.
         """
         page = session.page
         await page.goto(self._settings.login_url, wait_until="domcontentloaded")
         screen = await wait_for_screen(page, self._sel, accept=_ACTIONABLE, timeout_s=15)
         if screen is LoginScreen.AUTHENTICATED:
-            _log.info("Акаунт уже авторизований — ручний вхід не потрібен")
+            _log.info("Account is already authenticated; manual login is not needed")
             return True
 
         _log.info(
-            "Ручний вхід: увійдіть в акаунт у вікні браузера. Програма не втручається й чекає",
+            "Manual login: sign in using the browser window. Automation is disabled; waiting",
             extra={"timeout_s": int(timeout_s)},
         )
         xman_before = read_cookie(await page.context.cookies(), XMAN_COOKIE)
@@ -81,11 +81,14 @@ class ManualLoginFlow:
         last_probe = float("-inf")
         while True:
             if page.is_closed():
-                raise BrowserClosedError("Вікно браузера закрито до завершення входу — сесію не збережено")
+                raise BrowserClosedError(
+                    "Browser window closed before login completed; session was not saved"
+                )
             now = self._clock()
             if now > deadline:
                 raise ManualLoginTimeoutError(
-                    f"Ручний вхід не завершено за {int(timeout_s)} с (збільште --manual-timeout)"
+                    f"Manual login did not complete within {int(timeout_s)} seconds "
+                    "(increase --manual-timeout)"
                 )
             cookies = await page.context.cookies()
             xman_after = read_cookie(cookies, XMAN_COOKIE)
@@ -102,7 +105,7 @@ class ManualLoginFlow:
             if looks_done and now - last_probe >= _PROBE_INTERVAL_S:
                 last_probe = now
                 if await self._probe.check_in_context(page.context):
-                    _log.info("Вхід підтверджено — забираю сесію")
+                    _log.info("Login confirmed; capturing session")
                     await self._sleep(_SETTLE_AFTER_SUCCESS_S)
                     return False
             await self._sleep(self._poll_s)

@@ -1,8 +1,8 @@
-"""Перевірка, чи збережена сесія досі автентифікована.
+"""Check whether the saved session is still authenticated.
 
-Метод (підтверджено дампами): для авторизованого акаунта сторінка входу завантажується й
-через ~0,3 с клієнтським скриптом перекидає на головну. Тому «відкрили сторінку входу й нас
-перекинуло геть» ⇔ сесія дійсна. Самі cookie про це не свідчать (``xman_us_t`` переживає сесію).
+Observed behavior: for an authenticated account, the login page loads and a client script redirects
+to the home page after about 0.3 seconds. This redirect indicates a valid session; cookies alone do
+not, because ``xman_us_t`` can outlive a session.
 """
 
 from __future__ import annotations
@@ -37,16 +37,16 @@ class SessionProbe:
         return self._settings.session_probe_url or self._settings.login_url
 
     async def check_page(self, page: Page, *, timeout_s: float = 8.0) -> bool:
-        """Відкриває сторінку перевірки на ``page`` і каже, чи сесія дійсна."""
+        """Open the probe page on ``page`` and return whether the session is valid."""
         await page.goto(self._probe_url, wait_until="domcontentloaded")
         screen = await wait_for_screen(page, self._sel, accept=_DECISIVE, timeout_s=timeout_s)
-        _log.debug("Перевірка сесії", extra={"screen": screen.value})
+        _log.debug("Session probe", extra={"screen": screen.value})
         if screen is LoginScreen.CAPTCHA:
-            raise CaptchaChallengeError("Під час перевірки сесії показано антибот-сторінку")
+            raise CaptchaChallengeError("An anti-bot page appeared during session verification")
         return screen is LoginScreen.AUTHENTICATED
 
     async def check_in_context(self, context: BrowserContext) -> bool:
-        """Перевірка в НОВІЙ вкладці того ж контексту — не чіпає сторінку, з якою працює людина."""
+        """Check in a new tab in the same context without disturbing the user's current page."""
         page = await context.new_page()
         try:
             return await self.check_page(page)
@@ -54,7 +54,7 @@ class SessionProbe:
             try:
                 await page.close()
             except Exception:
-                _log.debug("Не вдалося закрити вкладку перевірки", exc_info=True)
+                _log.debug("Failed to close session probe tab", exc_info=True)
 
     async def is_authenticated(self, session: BrowserSession) -> bool:
         result = await self.check_page(session.page)

@@ -1,4 +1,4 @@
-"""Пул запущених браузерів (patchright). Не більше одного браузера на режим headless/headful."""
+"""Pool of launched patchright browsers, with at most one browser per headless/headful mode."""
 
 from __future__ import annotations
 
@@ -22,11 +22,11 @@ _log = logging.getLogger(__name__)
 def build_launch_options(
     settings: BrowserSettings, *, headless: bool, browser: BrowserChoice | None = None
 ) -> dict[str, Any]:
-    """Параметри ``chromium.launch``. Чиста функція (тестується без браузера).
+    """Build ``chromium.launch`` options as a pure function testable without a browser.
 
-    Свідомо мінімум прапорців: patchright сам прибирає основні витоки, а зайві аргументи
-    командного рядка самі по собі можуть бути ознакою автоматизації (див. memory/05).
-    ``browser`` обирає браузер: вбудований patchright (за замовч.), Chrome, Edge чи власний шлях.
+    Keep flags minimal: patchright handles the main automation leaks, and extra command-line
+    arguments may themselves indicate automation (see memory/05). ``browser`` selects patchright,
+    Chrome, Edge, or a custom executable.
     """
     browser = browser or BrowserChoice()
     args = list(settings.extra_args)
@@ -47,7 +47,7 @@ def build_launch_options(
         if settings.proxy.password:
             proxy["password"] = settings.proxy.password.reveal()
         options["proxy"] = proxy
-    # У контейнерах/під root Chromium без --no-sandbox не стартує.
+    # Chromium requires --no-sandbox in containers or when running as root.
     if sys.platform.startswith("linux") and hasattr(os, "geteuid") and os.geteuid() == 0:
         options["chromium_sandbox"] = False
         args.append("--no-sandbox")
@@ -55,27 +55,27 @@ def build_launch_options(
 
 
 def check_executable_exists(executable: str | None) -> None:
-    """Швидка перевірка шляху до браузера (зрозуміла помилка замість внутрішньої помилки Playwright)."""
+    """Check the browser path early and report a clear error instead of a Playwright exception."""
     if executable and not Path(executable).is_file():
-        raise ConfigurationError(f"Файл браузера не знайдено: {executable}")
+        raise ConfigurationError(f"Browser executable not found: {executable}")
 
 
 def _install_hint(browser: BrowserChoice) -> str:
     match browser.kind:
         case BrowserKind.CHROMIUM:
-            return "Чи виконано `patchright install chromium`?"
+            return "Have you run `patchright install chromium`?"
         case BrowserKind.CHROME | BrowserKind.MSEDGE:
             return (
-                f"Чи встановлено {browser.kind.value} у системі? "
-                f"Встановіть його (`patchright install {browser.kind.value}`) "
-                "або вкажіть шлях: --browser-path."
+                f"Is {browser.kind.value} installed on this system? "
+                f"Install it (`patchright install {browser.kind.value}`) "
+                "or specify its path with --browser-path."
             )
         case BrowserKind.CUSTOM:
-            return "Перевірте шлях і те, що це chromium-сумісний браузер."
+            return "Check the path and ensure this is a Chromium-compatible browser."
 
 
 class BrowserPool:
-    """Лінива фабрика браузерів. Один браузер на пару (режим headless, вибір браузера)."""
+    """Lazy browser factory with one browser per headless mode and browser choice."""
 
     def __init__(self, settings: BrowserSettings) -> None:
         self._settings = settings
@@ -99,12 +99,12 @@ class BrowserPool:
                 self._playwright = await async_playwright().start()
             options = build_launch_options(self._settings, headless=mode, browser=choice)
             check_executable_exists(options.get("executable_path"))
-            _log.info("Запуск браузера", extra={"headless": mode, "browser": str(choice)})
+            _log.info("Launching browser", extra={"headless": mode, "browser": str(choice)})
             try:
                 launched = await self._playwright.chromium.launch(**options)
             except Exception as exc:
                 raise ConfigurationError(
-                    f"Не вдалося запустити браузер ({choice}): {exc}. {_install_hint(choice)}"
+                    f"Failed to launch browser ({choice}): {exc}. {_install_hint(choice)}"
                 ) from exc
             self._browsers[key] = launched
             return launched

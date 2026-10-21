@@ -1,4 +1,4 @@
-"""Постійність профілю: кодек (міграція v1→v2), сервіси, експорт/імпорт, домен, CLI-фрази."""
+"""Profile persistence: codec migration, services, export/import, domain, and CLI passphrases."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ from tests.conftest import (
 A, B = AccountId("a"), AccountId("b")
 
 
-# ── домен ──────────────────────────────────────────────────────────────────
+# ── Domain ─────────────────────────────────────────────────────────────────
 class TestBrowserProfileModel:
     def test_accessors(self) -> None:
         profile = make_profile("X")
@@ -55,7 +55,7 @@ class TestBrowserProfileModel:
         assert sparse.device_scale_factor == 1.0 and sparse.hardware_concurrency is None
 
 
-# ── кодек ──────────────────────────────────────────────────────────────────
+# ── Codec ──────────────────────────────────────────────────────────────────
 class TestCodecProfile:
     def test_roundtrip_preserves_profile_exactly(self) -> None:
         account = make_account(session=make_session(), profile=make_profile("Z"))
@@ -69,7 +69,7 @@ class TestCodecProfile:
         assert json.loads(encode_account(make_account()))["version"] == FORMAT_VERSION == 2
 
     def test_old_v1_files_still_load_without_profile(self) -> None:
-        """Міграція v1→v2: файли, збережені до появи профілів, читаються (профіль створиться пізніше)."""
+        """Migration v1→v2: files saved before profiles were introduced still load."""
         v1 = json.loads(encode_account(make_account(session=make_session())))
         v1["version"] = 1
         v1.pop("browser_profile")
@@ -79,7 +79,7 @@ class TestCodecProfile:
     def test_unknown_profile_schema_is_a_storage_error(self) -> None:
         payload: dict[str, Any] = json.loads(encode_account(make_account(profile=make_profile())))
         payload["browser_profile"]["schema_version"] = 99
-        with pytest.raises(StorageError, match="профілю"):
+        with pytest.raises(StorageError, match="browser profile"):
             decode_account(json.dumps(payload).encode())
 
     def test_corrupted_profile_is_a_storage_error(self) -> None:
@@ -105,7 +105,7 @@ class TestEnsureProfile:
         first = await accounts.ensure_profile(A)
         again = await accounts.ensure_profile(A)
         assert first.profile is not None and again.profile == first.profile
-        assert profiles.calls == 1  # другий виклик НЕ створює новий профіль
+        assert profiles.calls == 1  # The second call does not create another profile.
         assert repo.items[A].profile == first.profile
 
     async def test_each_account_gets_its_own_environment(self, accounts: AccountService) -> None:
@@ -155,12 +155,12 @@ class TestAuthUsesProfile:
         await self.make(accounts, repo, fake).login(A)
         stored = repo.items[A].profile
         assert stored is not None and fake.login_calls[0].profile == stored
-        assert repo.items[A].session is not None  # сесія й профіль збережені разом
+        assert repo.items[A].session is not None  # Session and profile are stored together.
 
     async def test_next_day_uses_the_same_environment(
         self, accounts: AccountService, repo: MemoryRepository, profiles: FakeProfileGenerator
     ) -> None:
-        """Головна вимога: наступного запуску акаунт у ТОМУ САМОМУ середовищі."""
+        """Core requirement: the account uses the same environment on the next run."""
         fake = FakeAuthenticator()
         await accounts.add(A, make_account().credentials)
         auth = self.make(accounts, repo, fake)
@@ -182,7 +182,7 @@ class TestAuthUsesProfile:
     async def test_legacy_session_without_profile_gets_one_on_first_use(
         self, accounts: AccountService, repo: MemoryRepository
     ) -> None:
-        """Акаунт із сесією, створеною до появи профілів: профіль створюється й зберігається."""
+        """An account with a legacy session gets a profile generated and saved on first use."""
         fake = FakeAuthenticator()
         repo.items[A] = make_account("a", session=make_session())
         auth = AuthService(accounts, repo, fake, verify_ttl_s=0, monotonic=lambda: 0.0)
@@ -198,7 +198,7 @@ class TestAuthUsesProfile:
         assert repo.items[A].profile is None
 
 
-# ── експорт / імпорт ───────────────────────────────────────────────────────
+# ── Export / import ────────────────────────────────────────────────────────
 class TestTransferFingerprint:
     @pytest.fixture
     def service(self, repo: MemoryRepository, profiles: FakeProfileGenerator) -> SessionTransferService:
@@ -213,11 +213,11 @@ class TestTransferFingerprint:
         self, service: SessionTransferService, repo: MemoryRepository, profiles: FakeProfileGenerator
     ) -> None:
         repo.items[A] = make_account("a", session=make_session(), profile=make_profile("ORIG"))
-        blob = await service.export_bytes(A)  # без прапорців
+        blob = await service.export_bytes(A)  # Default options.
         repo.items.clear()
         imported = await service.import_bytes(blob)
         assert imported.profile == make_profile("ORIG") and imported.credentials is None
-        assert profiles.calls == 0  # нового профілю не створювали
+        assert profiles.calls == 0  # No profile was generated.
 
     async def test_no_fingerprint_flag_strips_it_and_import_creates_a_new_one(
         self, service: SessionTransferService, repo: MemoryRepository, profiles: FakeProfileGenerator
@@ -232,7 +232,7 @@ class TestTransferFingerprint:
     async def test_bundle_without_profile_gets_one_generated(
         self, service: SessionTransferService, repo: MemoryRepository
     ) -> None:
-        repo.items[A] = make_account("a", session=make_session())  # старий акаунт без профілю
+        repo.items[A] = make_account("a", session=make_session())  # Legacy account without a profile.
         blob = await service.export_bytes(A)
         repo.items.clear()
         assert (await service.import_bytes(blob)).profile is not None
@@ -253,7 +253,7 @@ class TestTransferFingerprint:
         blob = await service.export_bytes(A)
         repo.items[A] = replace(repo.items[A], profile=make_profile("LOCAL"))
         merged = await service.import_bytes(blob, overwrite=True)
-        assert merged.profile == make_profile("FROM_BUNDLE")  # сесія й середовище мандрують разом
+        assert merged.profile == make_profile("FROM_BUNDLE")  # Session and environment travel together.
 
     async def test_credentials_flag_is_independent_of_fingerprint(
         self, service: SessionTransferService, repo: MemoryRepository
@@ -262,11 +262,11 @@ class TestTransferFingerprint:
         blob = await service.export_bytes(A, include_credentials=True, include_fingerprint=False)
         repo.items.clear()
         imported = await service.import_bytes(blob, as_id=B)
-        assert imported.credentials is not None  # логін/пароль є — автоматичний вхід можливий
-        assert imported.profile != make_profile("ORIG")  # а відбиток — новий
+        assert imported.credentials is not None  # Credentials allow automatic login.
+        assert imported.profile != make_profile("ORIG")  # A new profile is generated.
 
 
-# ── CLI: парольна фраза пакета ─────────────────────────────────────────────
+# ── CLI: bundle passphrase ─────────────────────────────────────────────────
 def export_args(*extra: str) -> Any:
     return build_parser().parse_args(["session", "export", "main", "main.bin", *extra])
 
@@ -289,12 +289,12 @@ class TestPassphraseOptions:
         monkeypatch.setattr("getpass.getpass", lambda prompt="": prompts.append(prompt) or next(answers))
         secret = _resolve_passphrase(export_args("--passphrase"), confirm=True)
         assert secret is not None and secret.reveal() == "correct horse battery staple"
-        assert len(prompts) == 2  # введення й підтвердження
+        assert len(prompts) == 2  # Initial entry and confirmation.
 
     def test_mismatching_confirmation_is_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
         answers = iter(["correct horse battery staple", "different phrase entirely!!"])
         monkeypatch.setattr("getpass.getpass", lambda prompt="": next(answers))
-        with pytest.raises(ConfigurationError, match="не збігаються"):
+        with pytest.raises(ConfigurationError, match="do not match"):
             _resolve_passphrase(export_args("--passphrase"), confirm=True)
 
     def test_import_does_not_ask_for_confirmation(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -304,13 +304,13 @@ class TestPassphraseOptions:
         assert _resolve_passphrase(args, confirm=False) is not None and len(calls) == 1
 
     def test_short_phrase_is_rejected_with_reason(self) -> None:
-        with pytest.raises(ConfigurationError, match="щонайменше 16"):
+        with pytest.raises(ConfigurationError, match="at least 16"):
             _check_passphrase_length("2305217")
 
     def test_env_variant_explains_name_vs_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Сценарій з логу: людина передала САМУ фразу як ім'я змінної."""
+        """Regression: the user passed the passphrase itself as the environment variable name."""
         monkeypatch.delenv("2305217", raising=False)
-        with pytest.raises(ConfigurationError, match="ІМ'Я змінної") as excinfo:
+        with pytest.raises(ConfigurationError, match="VARIABLE NAME") as excinfo:
             _resolve_passphrase(export_args("--passphrase-env", "2305217"), confirm=True)
         assert "--passphrase" in str(excinfo.value)
 
@@ -329,14 +329,14 @@ class TestProfileCommands:
             parser.parse_args(["profile", "show"])
 
 
-# ── сховище на диску: профіль переживає перезапуск ─────────────────────────
+# ── Disk storage: profile persists across restarts ─────────────────────────
 async def test_profile_survives_encrypted_storage_roundtrip(tmp_path: Path) -> None:
     from aliweb.infrastructure.storage.file_repository import FileAccountRepository
 
     repo = FileAccountRepository(tmp_path, fast_cipher())
     await repo.save(make_account("a", session=make_session(), profile=make_profile("DISK")))
     raw = (tmp_path / "a.bin").read_bytes()
-    assert b"ANGLE" not in raw and b"Chrome/147" not in raw  # відбиток зашифровано
-    reopened = FileAccountRepository(tmp_path, fast_cipher())  # «наступного дня»
+    assert b"ANGLE" not in raw and b"Chrome/147" not in raw  # Fingerprint is encrypted.
+    reopened = FileAccountRepository(tmp_path, fast_cipher())  # Simulate reopening the next day.
     loaded = await reopened.get(A)
     assert loaded is not None and loaded.profile == make_profile("DISK")

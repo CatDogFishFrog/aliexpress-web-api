@@ -1,4 +1,4 @@
-"""Фейки Page/Element для тестів без браузера (миша, клавіатура, фрейми, видимість селекторів)."""
+"""Fake Page and Element objects for tests without a browser."""
 
 from __future__ import annotations
 
@@ -88,7 +88,7 @@ class FakeLocator:
 
 
 class FakePage:
-    """Мінімальна імітація patchright ``Page``. ``visible_selectors`` — що зараз «видно» на сторінці."""
+    """Minimal patchright ``Page`` fake. ``visible_selectors`` lists selectors visible on the page."""
 
     def __init__(self, url: str = "https://www.aliexpress.com/p/ug-login-page/login.html") -> None:
         self.url = url

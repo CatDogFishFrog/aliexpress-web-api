@@ -1,9 +1,9 @@
-"""Вибір браузера та режиму для входу в акаунт.
+"""Browser selection and account login mode.
 
-Правила (рішення замовника, див. memory/03-decisions.md ADR-13):
-  * Безголовий режим ЗАВЖДИ працює на браузері patchright (``CHROMIUM``).
-  * Для режиму з вікном (headful) можна обрати браузер: patchright, Chrome, Edge або власний шлях.
-  * Скрапер (не вхід) завжди використовує браузер patchright; його режим задається в ``.env``.
+Rules (see memory/03-decisions.md ADR-13):
+    * Headless mode always uses the patchright browser (``CHROMIUM``).
+    * Headful mode can use patchright, Chrome, Edge, or a custom executable path.
+    * The scraper always uses patchright; its mode is configured in ``.env``.
 """
 
 from __future__ import annotations
@@ -15,24 +15,24 @@ from aliweb.domain.errors import InvalidLoginModeError
 
 
 class BrowserKind(StrEnum):
-    CHROMIUM = "chromium"  # вбудований Chromium patchright (`patchright install chromium`)
-    CHROME = "chrome"  # встановлений Google Chrome
-    MSEDGE = "msedge"  # встановлений Microsoft Edge
-    CUSTOM = "custom"  # власний chromium-сумісний браузер за шляхом
+    CHROMIUM = "chromium"  # patchright's bundled Chromium (`patchright install chromium`)
+    CHROME = "chrome"  # installed Google Chrome
+    MSEDGE = "msedge"  # installed Microsoft Edge
+    CUSTOM = "custom"  # custom Chromium-compatible browser at the given path
 
 
 @dataclass(frozen=True, slots=True)
 class BrowserChoice:
-    """Який браузер запускати. ``executable_path`` обов'язковий для CUSTOM і заборонений для решти."""
+    """Browser to launch. ``executable_path`` is required for CUSTOM and forbidden otherwise."""
 
     kind: BrowserKind = BrowserKind.CHROMIUM
     executable_path: str | None = None
 
     def __post_init__(self) -> None:
         if self.kind is BrowserKind.CUSTOM and not self.executable_path:
-            raise InvalidLoginModeError("Для власного браузера потрібен шлях до виконуваного файлу")
+            raise InvalidLoginModeError("A custom browser requires an executable path")
         if self.kind is not BrowserKind.CUSTOM and self.executable_path:
-            raise InvalidLoginModeError("Шлях до браузера можна задавати лише для власного браузера")
+            raise InvalidLoginModeError("An executable path can only be set for a custom browser")
 
     @classmethod
     def custom(cls, executable_path: str) -> BrowserChoice:
@@ -48,13 +48,13 @@ class BrowserChoice:
 
 @dataclass(frozen=True, slots=True)
 class LoginMode:
-    """Режим входу: безголовий чи з вікном, який браузер, автоматичний чи ручний.
+    """Login mode: headless or headful, browser choice, and automatic or manual login.
 
-    Інваріанти:
-      * безголовий вхід можливий лише в браузері patchright;
-      * ручний вхід (``manual``) вимагає вікна — людина має бачити браузер.
-    Ручний режим вимикає автоматизацію: програма лише чекає, поки людина увійде сама, після чого
-    забирає сесію й закриває браузер. Облікові дані при цьому не потрібні.
+        Invariants:
+            * headless login only works with patchright;
+            * manual login (``manual``) requires a visible browser window.
+        Manual mode disables automation: the program waits for the user to log in, then captures the
+        session and closes the browser. Credentials are not required.
     """
 
     headless: bool = True
@@ -65,10 +65,10 @@ class LoginMode:
     def __post_init__(self) -> None:
         if self.headless and not self.browser.is_bundled:
             raise InvalidLoginModeError(
-                "Безголовий вхід можливий лише в браузері patchright (chromium). "
-                "Для Chrome, Edge чи власного браузера використайте режим з вікном (--headful)."
+                "Headless login only supports the patchright browser (chromium). "
+                "Use headful mode (--headful) for Chrome, Edge, or a custom browser."
             )
         if self.manual and self.headless:
-            raise InvalidLoginModeError("Ручний вхід (--manual) потребує вікна браузера: додайте --headful.")
+            raise InvalidLoginModeError("Manual login (--manual) requires a browser window; add --headful.")
         if self.manual_timeout_s <= 0:
-            raise InvalidLoginModeError("Таймаут ручного входу має бути додатним")
+            raise InvalidLoginModeError("Manual login timeout must be positive")

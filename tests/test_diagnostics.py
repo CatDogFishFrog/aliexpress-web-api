@@ -1,4 +1,4 @@
-"""Тести збирача діагностики на фейковій сторінці (реальний браузер не потрібен)."""
+"""Tests for the diagnostics collector using a fake page, without a real browser."""
 
 from __future__ import annotations
 
@@ -99,7 +99,7 @@ async def test_policy_gating(tmp_path: Path) -> None:
     never = collector(tmp_path / "n", policy=DumpPolicy.NEVER)
     assert await never.on_error(page, RuntimeError("x"), None) is None
     on_error = collector(tmp_path / "e")
-    assert await on_error.checkpoint(page, "step", None) is None  # чекпоінти лише для ALWAYS
+    assert await on_error.checkpoint(page, "step", None) is None  # Checkpoints are captured only for ALWAYS.
     assert await on_error.on_error(page, RuntimeError("x"), None) is not None
     always = collector(tmp_path / "a", policy=DumpPolicy.ALWAYS)
     assert await always.checkpoint(page, "step", None) is not None

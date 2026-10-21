@@ -13,9 +13,9 @@ def test_parser_covers_commands() -> None:
     assert parser.parse_args(["session", "import", "x.bin", "--as", "new", "--overwrite"]).overwrite
     assert parser.parse_args(["accounts", "add", "a", "--login", "u@m.c"]).cmd == "add"
     with pytest.raises(SystemExit):
-        parser.parse_args(["login", "a", "--browser", "chrome", "--browser-path", "/x"])  # взаємовиключні
+        parser.parse_args(["login", "a", "--browser", "chrome", "--browser-path", "/x"])
     with pytest.raises(SystemExit):
-        parser.parse_args(["login", "a", "--browser", "firefox"])  # лише chromium-сімейство
+        parser.parse_args(["login", "a", "--browser", "firefox"])  # Chromium-family browsers only.
 
 
 def test_secret_generate_prints_key(capsys: pytest.CaptureFixture[str]) -> None:
@@ -91,4 +91,4 @@ class TestManualAndDebugFlags:
         args = parser.parse_args(["accounts", "update", "main", "--login", "new@mail.com"])
         assert args.cmd == "update" and args.login == "new@mail.com"
         with pytest.raises(SystemExit):
-            parser.parse_args(["accounts", "update", "main"])  # --login обов'язковий
+            parser.parse_args(["accounts", "update", "main"])  # --login is required.

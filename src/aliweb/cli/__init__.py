@@ -1,1 +1,1 @@
-"""Шар представлення: командний рядок. Лише розбір аргументів і форматування виводу."""
+"""Presentation layer: command-line argument parsing and output formatting."""

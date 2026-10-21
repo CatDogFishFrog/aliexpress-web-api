@@ -1,4 +1,4 @@
-"""Моделі акаунтів і сесій."""
+"""Account and session models."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from aliweb.domain.errors import InvalidAccountIdError
 from aliweb.domain.profile import BrowserProfile
 from aliweb.domain.secret import Secret
 
-#: Формат storage_state Playwright: ``{"cookies": [...], "origins": [...]}``.
+#: Playwright storage_state format: ``{"cookies": [...], "origins": [...]}``.
 type StorageState = dict[str, Any]
 
 _ACCOUNT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
@@ -19,9 +19,9 @@ _ACCOUNT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 
 @dataclass(frozen=True, slots=True)
 class AccountId:
-    """Користувацька назва-ідентифікатор акаунта (латиниця, цифри, ``_`` і ``-``, до 32 символів).
+    """User-defined account identifier (ASCII letters, digits, ``_`` and ``-``, up to 32 characters).
 
-    Використовується як ім'я файлу, тому формат суворий (захист від path traversal).
+    Used as a filename, so the format is strict to prevent path traversal.
     """
 
     value: str
@@ -29,13 +29,13 @@ class AccountId:
     def __post_init__(self) -> None:
         if not _ACCOUNT_ID_RE.fullmatch(self.value):
             raise InvalidAccountIdError(
-                f"Некоректний ідентифікатор акаунта {self.value!r}: дозволено a-z, 0-9, '_' і '-', "
-                "починається з літери/цифри, до 32 символів"
+                f"Invalid account identifier {self.value!r}: allowed characters are a-z, 0-9, '_' and '-'; "
+                "it must start with a letter or digit and be at most 32 characters long"
             )
 
     @classmethod
     def parse(cls, raw: str) -> AccountId:
-        """Нормалізує (trim + lower-case) і валідує введення користувача."""
+        """Normalize (trim and lowercase) and validate user input."""
         return cls(raw.strip().lower())
 
     def __str__(self) -> str:
@@ -44,7 +44,7 @@ class AccountId:
 
 @dataclass(frozen=True, slots=True)
 class Credentials:
-    """Логін (e-mail/телефон) і пароль акаунта."""
+    """Account login (email or phone) and password."""
 
     login: str
     password: Secret
@@ -69,7 +69,7 @@ def mask_login(login: str) -> str:
 
 @dataclass(frozen=True, slots=True)
 class SessionState:
-    """Збережена браузерна сесія акаунта."""
+    """Saved browser session for an account."""
 
     storage_state: StorageState
     captured_at: datetime
@@ -82,9 +82,9 @@ class SessionState:
 
 @dataclass(frozen=True, slots=True)
 class Account:
-    """Акаунт: ідентифікатор, (необов'язково) облікові дані та поточна сесія.
+    """Account identifier, optional credentials, and current session.
 
-    Незмінний: «змінюючі» операції повертають нову копію.
+    Immutable: update operations return a new instance.
     """
 
     id: AccountId
@@ -92,7 +92,7 @@ class Account:
     updated_at: datetime
     credentials: Credentials | None = None
     session: SessionState | None = None
-    profile: BrowserProfile | None = None  # постійне браузерне «середовище» акаунта
+    profile: BrowserProfile | None = None  # persistent browser environment for the account
 
     def with_profile(self, profile: BrowserProfile | None, *, now: datetime) -> Account:
         return replace(self, profile=profile, updated_at=now)
@@ -109,11 +109,11 @@ class Account:
 
 @dataclass(frozen=True, slots=True)
 class AccountSummary:
-    """Безпечне для виводу представлення акаунта (без секретів)."""
+    """Account summary safe for display (contains no secrets)."""
 
     id: AccountId
     masked_login: str | None
     has_session: bool
     session_captured_at: datetime | None
     is_active: bool = field(default=False)
-    profile_label: str | None = None  # напр. "windows 1920x1080"; None — профілю ще немає
+    profile_label: str | None = None  # e.g. "windows 1920x1080"; None if no profile exists

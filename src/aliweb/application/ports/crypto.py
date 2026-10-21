@@ -6,18 +6,18 @@ from aliweb.domain.secret import Secret
 
 
 class Cipher(Protocol):
-    """Симетричне шифрування блоку байтів. ``aad`` автентифікується, але не шифрується."""
+    """Symmetric encryption for byte strings. ``aad`` is authenticated but not encrypted."""
 
     def encrypt(self, plaintext: bytes, *, aad: bytes = b"") -> bytes: ...
 
     def decrypt(self, blob: bytes, *, aad: bytes = b"") -> bytes:
         """Raises:
-        DecryptionError: хибний ключ або пошкоджені дані.
+        DecryptionError: incorrect key or corrupted data.
         """
         ...
 
 
 class CipherFactory(Protocol):
-    """Створює шифр з довільного ключа (потрібно для експорту з іншою парольною фразою)."""
+    """Create a cipher from an arbitrary key, used for exports with a separate passphrase."""
 
     def __call__(self, secret: Secret) -> Cipher: ...

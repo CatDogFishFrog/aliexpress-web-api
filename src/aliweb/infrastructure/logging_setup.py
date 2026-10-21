@@ -1,4 +1,4 @@
-"""Налаштування логування: консоль + (опційно) файл із ротацією, текст або JSON, маскування секретів."""
+"""Configure console and optional rotating-file logging in text or JSON with secret redaction."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def _extra_fields(record: logging.LogRecord) -> dict[str, object]:
 
 
 class RedactingFilter(logging.Filter):
-    """Маскує секрети в повідомленні, аргументах, extra та тексті винятку."""
+    """Redact secrets from the message, arguments, extra fields, and exception text."""
 
     def __init__(self, redactor: Redactor) -> None:
         super().__init__()
@@ -69,7 +69,7 @@ class JsonFormatter(logging.Formatter):
 
 
 def configure_logging(settings: LoggingSettings, *, logs_dir: Path, redactor: Redactor) -> logging.Logger:
-    """Конфігурує логер ``aliweb`` (ідемпотентно). Повертає кореневий логер проєкту."""
+    """Configure the ``aliweb`` logger idempotently and return the project root logger."""
     logger = logging.getLogger(ROOT_LOGGER_NAME)
     for handler in list(logger.handlers):
         logger.removeHandler(handler)
@@ -77,7 +77,7 @@ def configure_logging(settings: LoggingSettings, *, logs_dir: Path, redactor: Re
 
     level = getattr(logging, settings.level, None)
     if not isinstance(level, int):
-        raise ValueError(f"Невідомий рівень логування: {settings.level!r}")
+        raise ValueError(f"Unknown logging level: {settings.level!r}")
     logger.setLevel(level)
     logger.propagate = False
 

@@ -1,7 +1,7 @@
-"""Конфігурація з змінних середовища та ``.env``.
+"""Configuration from environment variables and ``.env``.
 
-Єдине місце, де читається ``os.environ`` (арх-тест це перевіряє). Решта коду отримує
-типізовані незмінні налаштування через параметри конструкторів (див. ``bootstrap``).
+This is the only module that reads ``os.environ`` (enforced by an architecture test). Other code
+receives typed, immutable settings through constructor parameters (see ``bootstrap``).
 """
 
 from __future__ import annotations
@@ -38,7 +38,10 @@ class ProxySettings:
 
 @dataclass(frozen=True, slots=True)
 class BrowserSettings:
-    """Налаштування браузера СКРАПЕРА (завжди браузер patchright). Браузер для входу — див. LoginMode."""
+    """Scraper browser settings; the scraper always uses patchright.
+
+    See LoginMode for login browser settings.
+    """
 
     headless: bool = True
     locale: str = "en-US"
@@ -53,17 +56,17 @@ class BrowserSettings:
 
 @dataclass(frozen=True, slots=True)
 class HumanSettings:
-    """Людиноподібна взаємодія зі сторінкою (набір тексту, миша, скрол). Див. ``browser/human.py``."""
+    """Human-like page interaction (typing, mouse, scrolling). See ``browser/human.py``."""
 
     enabled: bool = True
-    speed: float = 1.0  # множник швидкості: >1 швидше, <1 повільніше
+    speed: float = 1.0  # Speed multiplier: >1 is faster, <1 is slower.
 
 
 @dataclass(frozen=True, slots=True)
 class FingerprintSettings:
-    """Параметри СТВОРЕННЯ профілю середовища акаунта (вже створений профіль більше не змінюється)."""
+    """Settings used to create an account profile; existing profiles are not changed."""
 
-    claimed_os: ClaimedOs | None = None  # None = ОС хоста (так «чесніше» для рушія, див. memory/05)
+    claimed_os: ClaimedOs | None = None  # None means the host OS (see memory/05).
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,7 +87,7 @@ class LoggingSettings:
 class AliExpressSettings:
     base_url: str = "https://www.aliexpress.com"
     login_url: str = "https://login.aliexpress.com/"
-    session_probe_url: str | None = None  # None = сторінка входу (авторизованих вона перекидає геть)
+    session_probe_url: str | None = None  # None uses the login page, which redirects authenticated users.
     logout_url: str | None = None
     session_verify_ttl_s: float = 600.0
 
@@ -101,12 +104,12 @@ class Settings:
     aliexpress: AliExpressSettings = field(default_factory=AliExpressSettings)
 
     def require_secret(self) -> Secret:
-        """Ключ шифрування або :class:`SecretMissingError` з підказкою, що робити."""
+        """Return the encryption key or raise :class:`SecretMissingError` with guidance."""
         secret = self.session_secret
         if secret is None or len(secret) < MIN_SECRET_LENGTH:
             raise SecretMissingError(
-                f"ALIWEB_SESSION_SECRET не задано або коротший за {MIN_SECRET_LENGTH} символів. "
-                "Згенеруйте ключ: `aliweb secret generate` і додайте його в .env"
+                f"ALIWEB_SESSION_SECRET is missing or shorter than {MIN_SECRET_LENGTH} characters. "
+                "Generate a key with `aliweb secret generate` and add it to .env."
             )
         return secret
 
@@ -129,9 +132,10 @@ class Settings:
         *,
         dotenv_path: Path | str | None = ".env",
     ) -> Settings:
-        """Читає налаштування. Пріоритет: ``environ`` (за замовчуванням os.environ) > ``.env``.
+        """Read settings. Precedence: ``environ`` (defaults to os.environ) > ``.env``.
 
-        ``.env`` не потрапляє в ``os.environ`` (не «протікає» в дочірні процеси, зокрема браузер).
+        Values from ``.env`` are not added to ``os.environ`` and cannot leak into child processes,
+        including the browser.
         """
         merged: dict[str, str] = {}
         if dotenv_path is not None and Path(dotenv_path).is_file():
@@ -210,7 +214,7 @@ def _to_bool(name: str, raw: str | None, default: bool) -> bool:
         return True
     if lowered in _FALSE:
         return False
-    raise ConfigurationError(f"{ENV_PREFIX}{name}: очікується true/false, отримано {raw!r}")
+    raise ConfigurationError(f"{ENV_PREFIX}{name}: expected true/false, got {raw!r}")
 
 
 def _to_int(name: str, raw: str | None, default: int, *, minimum: int) -> int:
@@ -219,9 +223,9 @@ def _to_int(name: str, raw: str | None, default: int, *, minimum: int) -> int:
     try:
         value = int(raw)
     except ValueError as exc:
-        raise ConfigurationError(f"{ENV_PREFIX}{name}: очікується ціле число, отримано {raw!r}") from exc
+        raise ConfigurationError(f"{ENV_PREFIX}{name}: expected an integer, got {raw!r}") from exc
     if value < minimum:
-        raise ConfigurationError(f"{ENV_PREFIX}{name}: значення має бути >= {minimum}")
+        raise ConfigurationError(f"{ENV_PREFIX}{name}: value must be >= {minimum}")
     return value
 
 
@@ -230,7 +234,7 @@ _TIMEZONE_RE = re.compile(r"^[A-Za-z]+(?:[_+-]?[A-Za-z0-9]+)*(?:/[A-Za-z0-9_+-]+
 
 def _to_timezone(raw: str | None) -> str | None:
     if raw is not None and not _TIMEZONE_RE.fullmatch(raw):
-        raise ConfigurationError(f"{ENV_PREFIX}TIMEZONE: очікується IANA-ідентифікатор, напр. Europe/Kyiv")
+        raise ConfigurationError(f"{ENV_PREFIX}TIMEZONE: expected an IANA identifier, e.g. Europe/Kyiv")
     return raw
 
 
@@ -241,7 +245,7 @@ def _to_claimed_os(raw: str | None) -> ClaimedOs | None:
         return ClaimedOs(raw.lower())
     except ValueError as exc:
         allowed = ", ".join(["auto", *(m.value for m in ClaimedOs)])
-        raise ConfigurationError(f"{ENV_PREFIX}FINGERPRINT_OS: допустимі значення: {allowed}") from exc
+        raise ConfigurationError(f"{ENV_PREFIX}FINGERPRINT_OS: allowed values: {allowed}") from exc
 
 
 def _to_float(name: str, raw: str | None, default: float, *, minimum: float, maximum: float) -> float:
@@ -250,9 +254,9 @@ def _to_float(name: str, raw: str | None, default: float, *, minimum: float, max
     try:
         value = float(raw)
     except ValueError as exc:
-        raise ConfigurationError(f"{ENV_PREFIX}{name}: очікується число, отримано {raw!r}") from exc
+        raise ConfigurationError(f"{ENV_PREFIX}{name}: expected a number, got {raw!r}") from exc
     if not minimum <= value <= maximum:
-        raise ConfigurationError(f"{ENV_PREFIX}{name}: значення має бути в межах {minimum}..{maximum}")
+        raise ConfigurationError(f"{ENV_PREFIX}{name}: value must be between {minimum} and {maximum}")
     return value
 
 
@@ -263,7 +267,7 @@ def _to_enum[E: StrEnum](name: str, raw: str | None, enum_type: type[E], default
         return enum_type(raw.lower())
     except ValueError as exc:
         allowed = ", ".join(m.value for m in enum_type)
-        raise ConfigurationError(f"{ENV_PREFIX}{name}: допустимі значення: {allowed}") from exc
+        raise ConfigurationError(f"{ENV_PREFIX}{name}: allowed values: {allowed}") from exc
 
 
 def _to_viewport(raw: str | None, default: tuple[int, int] | None) -> tuple[int, int] | None:
@@ -276,8 +280,8 @@ def _to_viewport(raw: str | None, default: tuple[int, int] | None) -> tuple[int,
         size = (int(width), int(height))
     except ValueError as exc:
         raise ConfigurationError(
-            f"{ENV_PREFIX}VIEWPORT: формат ШИРИНАxВИСОТА або 'none', отримано {raw!r}"
+            f"{ENV_PREFIX}VIEWPORT: expected WIDTHxHEIGHT or 'none', got {raw!r}"
         ) from exc
     if size[0] < 200 or size[1] < 200:
-        raise ConfigurationError(f"{ENV_PREFIX}VIEWPORT: розміри надто малі")
+        raise ConfigurationError(f"{ENV_PREFIX}VIEWPORT: dimensions are too small")
     return size

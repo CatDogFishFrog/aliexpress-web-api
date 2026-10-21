@@ -1,94 +1,94 @@
-"""Ієрархія помилок проєкту.
+"""Project error hierarchy.
 
-Правило: усі «очікувані» збої піднімаються як нащадки :class:`AliWebError`,
-щоб споживач API міг ловити одну базову помилку. Сторонні винятки (patchright,
-OSError тощо) перетворюються на доменні на межі відповідного адаптера.
+All expected failures derive from :class:`AliWebError`, allowing API consumers to catch one base
+exception. External exceptions (such as patchright and ``OSError``) are translated into domain
+errors at the relevant adapter boundary.
 """
 
 from __future__ import annotations
 
 
 class AliWebError(Exception):
-    """Базова помилка проєкту.
+    """Base project error.
 
-    ``diagnostics_dir`` заповнюється, коли для помилки вдалося зберегти дамп сторінки.
+    ``diagnostics_dir`` is set when a diagnostic page dump was saved for the error.
     """
 
     diagnostics_dir: str | None = None
 
 
-# ── Конфігурація ───────────────────────────────────────────────────────────
+# ── Configuration ─────────────────────────────────────────────────────────
 class ConfigurationError(AliWebError):
-    """Некоректна або неповна конфігурація."""
+    """Invalid or incomplete configuration."""
 
 
 class InvalidLoginModeError(ConfigurationError):
-    """Недопустима комбінація режиму/браузера для входу."""
+    """Unsupported login mode and browser combination."""
 
 
 class SecretMissingError(ConfigurationError):
-    """Не задано (або надто короткий) ключ шифрування ALIWEB_SESSION_SECRET."""
+    """ALIWEB_SESSION_SECRET is missing or too short."""
 
 
-# ── Криптографія та сховище ────────────────────────────────────────────────
+# ── Cryptography and storage ───────────────────────────────────────────────
 class CryptoError(AliWebError):
-    """Базова помилка шифрування."""
+    """Base encryption error."""
 
 
 class DecryptionError(CryptoError):
-    """Не вдалося розшифрувати: хибний ключ, пошкоджений або чужий файл."""
+    """Decryption failed: incorrect key, corrupted data, or an unrelated file."""
 
 
 class StorageError(AliWebError):
-    """Помилка читання/запису сховища акаунтів."""
+    """Account storage read or write error."""
 
 
-# ── Акаунти ────────────────────────────────────────────────────────────────
+# ── Accounts ──────────────────────────────────────────────────────────────
 class AccountError(AliWebError):
-    """Базова помилка керування акаунтами."""
+    """Base account management error."""
 
 
 class InvalidAccountIdError(AccountError):
-    """Ідентифікатор акаунта не відповідає формату."""
+    """Account identifier does not match the required format."""
 
 
 class AccountNotFoundError(AccountError):
-    """Акаунт не знайдено."""
+    """Account was not found."""
 
 
 class AccountAlreadyExistsError(AccountError):
-    """Акаунт із таким ідентифікатором уже існує."""
+    """An account with this identifier already exists."""
 
 
 class NoActiveAccountError(AccountError):
-    """Активний акаунт не обрано."""
+    """No active account is selected."""
 
 
 class MissingCredentialsError(AccountError):
-    """Для дії потрібні логін/пароль, але вони не збережені в акаунті."""
+    """This action requires login credentials, but none are saved for the account."""
 
 
 class EmptyBundleError(AccountError):
-    """Імпортований файл не містить ні сесії, ні облікових даних."""
+    """Imported file contains neither a session nor credentials."""
 
 
-# ── Автентифікація ─────────────────────────────────────────────────────────
+# ── Authentication ────────────────────────────────────────────────────────
 class AuthenticationError(AliWebError):
-    """Базова помилка входу."""
+    """Base authentication error."""
 
 
 class LoginFailedError(AuthenticationError):
-    """Вхід не вдався (немає сильних сигналів автентифікації)."""
+    """Login failed because there were no strong authentication signals."""
 
 
 class CaptchaChallengeError(LoginFailedError):
-    """Антибот-виклик (слайдер тощо) не подолано."""
+    """An anti-bot challenge (such as a slider) was not solved."""
 
 
 class RiskControlError(CaptchaChallengeError):
-    """Відхилено системою ризик-контролю AliExpress (RGV587/FAIL_SYS_*).
+    """Rejected by AliExpress risk control (RGV587/FAIL_SYS_*).
 
-    ``cooldown_hours`` — рекомендована пауза перед наступною спробою.
+    ``cooldown_hours`` is the recommended wait before another attempt.
     """
 
     def __init__(self, message: str, *, cooldown_hours: int = 48) -> None:
@@ -97,37 +97,37 @@ class RiskControlError(CaptchaChallengeError):
 
 
 class TwoFactorRequiredError(AuthenticationError):
-    """Потрібен код 2FA, але інтерактивне введення недоступне."""
+    """A 2FA code is required, but interactive input is unavailable."""
 
 
 class SessionExpiredError(AuthenticationError):
-    """Збережена сесія вже недійсна."""
+    """Saved session is no longer valid."""
 
 
 class ManualLoginTimeoutError(AuthenticationError):
-    """Ручний вхід не завершено за відведений час."""
+    """Manual login did not complete before the timeout."""
 
 
-# ── Скрапінг ───────────────────────────────────────────────────────────────
+# ── Scraping ──────────────────────────────────────────────────────────────
 class ScrapingError(AliWebError):
-    """Базова помилка скрапінгу."""
+    """Base scraping error."""
 
 
 class BrowserClosedError(ScrapingError):
-    """Вікно/сторінку браузера закрито до завершення операції (напр. користувачем)."""
+    """Browser window or page closed before the operation completed, possibly by the user."""
 
 
 class NavigationError(ScrapingError):
-    """Не вдалося відкрити сторінку."""
+    """Failed to open the page."""
 
 
 class PageStructureError(ScrapingError):
-    """Структура сторінки не збіглася з очікуваною (змінилась верстка?)."""
+    """Page structure did not match expectations; the site layout may have changed."""
 
 
 class ProfileGenerationError(AliWebError):
-    """Не вдалося створити реалістичний профіль браузера."""
+    """Failed to create a realistic browser profile."""
 
 
 class ExtractorNotImplementedError(ScrapingError):
-    """Екстрактор ще не реалізований (каркас)."""
+    """Extractor is not implemented yet."""

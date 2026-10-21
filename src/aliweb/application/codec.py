@@ -1,8 +1,8 @@
-"""Кодек акаунта: Account ↔ байти (JSON). Єдиний формат і для сховища, і для експорту.
+"""Account codec: Account ↔ bytes (JSON). Shared format for storage and exports.
 
-Це чиста функція даних без вводу/виводу. Шифрування — окремо (порт ``Cipher``).
-Формат версіонований: при зміні схеми піднімаємо ``FORMAT_VERSION`` і додаємо міграцію
-в :func:`decode_account`.
+This is a pure data transformation with no I/O. Encryption is handled separately by the ``Cipher`` port.
+The format is versioned: increment ``FORMAT_VERSION`` and add a migration to :func:`decode_account`
+when the schema changes.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from aliweb.domain.secret import Secret
 
 FORMAT_NAME = "aliweb.account"
 FORMAT_VERSION = 2
-#: Версії, які вміє читати decode_account (старіші — через міграцію нижче).
+#: Versions readable by decode_account (older versions are migrated below).
 READABLE_VERSIONS = frozenset({1, 2})
 
 
@@ -37,7 +37,7 @@ def _encode_profile(profile: BrowserProfile) -> dict[str, Any]:
 def _decode_profile(raw: dict[str, Any]) -> BrowserProfile:
     schema = raw.get("schema_version", PROFILE_SCHEMA_VERSION)
     if schema != PROFILE_SCHEMA_VERSION:
-        raise StorageError(f"Непідтримувана версія профілю браузера: {schema!r}")
+        raise StorageError(f"Unsupported browser profile version: {schema!r}")
     width, height = raw["viewport"]
     return BrowserProfile(
         created_at=datetime.fromisoformat(raw["created_at"]),
@@ -82,21 +82,21 @@ def encode_account(
 
 def decode_account(data: bytes) -> Account:
     """Raises:
-    StorageError: невідомий формат/версія або пошкоджена структура.
+    StorageError: unknown format or version, or malformed structure.
     """
     try:
         raw = json.loads(data.decode("utf-8"))
         if raw.get("format") != FORMAT_NAME:
-            raise StorageError("Це не файл акаунта aliweb")
+            raise StorageError("This is not an aliweb account file")
         version = raw.get("version")
         if version not in READABLE_VERSIONS:
             raise StorageError(
-                f"Непідтримувана версія формату акаунта: {version!r} "
-                f"(підтримуються: {sorted(READABLE_VERSIONS)})"
+                f"Unsupported account format version: {version!r} "
+                f"(supported: {sorted(READABLE_VERSIONS)})"
             )
         creds_raw = raw.get("credentials")
         session_raw = raw.get("session")
-        profile_raw = raw.get("browser_profile")  # у версії 1 поля немає → None (міграція v1→v2)
+        profile_raw = raw.get("browser_profile")  # Absent in v1; migrated to None for v1→v2.
         return Account(
             id=AccountId(raw["id"]),
             created_at=datetime.fromisoformat(raw["created_at"]),
@@ -118,5 +118,5 @@ def decode_account(data: bytes) -> Account:
         )
     except StorageError:
         raise
-    except (ValueError, KeyError, TypeError, AttributeError) as exc:  # включно з невірним ClaimedOs
-        raise StorageError(f"Пошкоджена структура файлу акаунта: {exc}") from exc
+    except (ValueError, KeyError, TypeError, AttributeError) as exc:  # Includes invalid ClaimedOs values.
+        raise StorageError(f"Malformed account file structure: {exc}") from exc

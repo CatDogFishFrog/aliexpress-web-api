@@ -1,4 +1,4 @@
-"""Реалізація порту ``Authenticator`` для AliExpress."""
+"""AliExpress implementation of the ``Authenticator`` port."""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ class AliExpressAuthenticator:
         mode = request.mode
         manual = mode is not None and mode.manual
         if not manual and request.credentials is None:
-            raise MissingCredentialsError("Для автоматичного входу потрібні логін і пароль")
+            raise MissingCredentialsError("Automatic login requires credentials")
         async with self._factory.open(
             request.storage_state,
             headless=mode.headless if mode else None,
@@ -52,7 +52,7 @@ class AliExpressAuthenticator:
             if mode is not None and manual:
                 already = await self._manual.run(session, timeout_s=mode.manual_timeout_s)
             else:
-                assert request.credentials is not None  # перевірено вище
+                assert request.credentials is not None  # Validated above.
                 already = await self._flow.run(session, request.credentials)
             state = await session.storage_state()
         return LoginResult(
@@ -73,9 +73,9 @@ class AliExpressAuthenticator:
             return await self._probe.is_authenticated(browser_session)
 
     async def logout(self, session: SessionState) -> None:
-        """Якщо задано ``ALIWEB_LOGOUT_URL`` — відкриває його; інакше вихід лише локальний."""
+        """Open ``ALIWEB_LOGOUT_URL`` if configured; otherwise perform local logout only."""
         if not self._settings.logout_url:
-            _log.debug("ALIWEB_LOGOUT_URL не задано — вихід лише локальний")
+            _log.debug("ALIWEB_LOGOUT_URL is not set; performing local logout only")
             return
         async with self._factory.open(session.storage_state) as browser_session:
             await browser_session.page.goto(self._settings.logout_url, wait_until="domcontentloaded")

@@ -1,4 +1,4 @@
-"""Легкий журнал мережевих запитів сторінки для діагностики (без тіл і заголовків)."""
+"""Lightweight page network log for diagnostics, excluding request bodies and headers."""
 
 from __future__ import annotations
 
@@ -23,10 +23,10 @@ class NetworkEntry:
 
 
 class NetworkRecorder:
-    """Кільцевий буфер останніх N запитів/відповідей контексту.
+    """Ring buffer of the latest N context requests and responses.
 
-    Навмисно НЕ зберігає заголовки й тіла (там cookie/токени); лише метадані. URL
-    проходять через :class:`Redactor`.
+    Intentionally stores metadata only, never headers or bodies, which may contain cookies or tokens. URLs
+    pass through :class:`Redactor`.
     """
 
     def __init__(self, redactor: Redactor, *, capacity: int = 500) -> None:

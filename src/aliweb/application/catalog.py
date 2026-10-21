@@ -1,4 +1,4 @@
-"""Сценарії каталогу: пошук, навігація по видачі, товари, продавці."""
+"""Catalog use cases: search, result navigation, products, and sellers."""
 
 from __future__ import annotations
 
@@ -13,15 +13,15 @@ class CatalogService:
         self._gateway = gateway
 
     async def search(self, query: SearchQuery) -> SearchPage:
-        """Одна сторінка видачі (``query.page``)."""
+        """One search results page (``query.page``)."""
         return await self._gateway.search(query)
 
     async def iter_pages(
         self, query: SearchQuery, *, max_pages: int | None = None
     ) -> AsyncIterator[SearchPage]:
-        """Навігація по видачі: віддає сторінки по одній, поки є наступна."""
+        """Iterate through result pages while a next page is available."""
         if max_pages is not None and max_pages < 1:
-            raise ValueError("max_pages має бути >= 1")
+            raise ValueError("max_pages must be >= 1")
         yielded = 0
         current: SearchQuery | None = query
         while current is not None:
@@ -33,7 +33,7 @@ class CatalogService:
             current = page.next_query()
 
     async def get_product(self, ref: ProductRef) -> Product:
-        """Повна інформація про товар зі сторінки товару."""
+        """Get full product information from its page."""
         return await self._gateway.get_product(ref)
 
 
@@ -42,5 +42,5 @@ class SellerService:
         self._gateway = gateway
 
     async def get_seller(self, ref: SellerRef) -> Seller:
-        """Повна інформація зі сторінки продавця."""
+        """Get full seller information from its page."""
         return await self._gateway.get_seller(ref)

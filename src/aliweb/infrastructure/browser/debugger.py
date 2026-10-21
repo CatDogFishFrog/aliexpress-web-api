@@ -1,4 +1,4 @@
-"""Реалізація ``PageDebugger``: відкрити URL і зробити дамп — БЕЗ входу в акаунт."""
+"""``PageDebugger`` implementation: open a URL and capture diagnostics without logging in."""
 
 from __future__ import annotations
 
@@ -16,11 +16,10 @@ _log = logging.getLogger(__name__)
 
 
 class AccountSessionDebugger:
-    """Відкриває сторінку «як є»: з cookie збереженої сесії акаунта, якщо вона є, інакше анонімно.
+    """Open a page as-is, using saved account cookies if available or browsing anonymously otherwise.
 
-    Принципово НЕ виконує вхід, НЕ перевіряє чинність сесії і НЕ зберігає оновлені cookie —
-    інструмент для швидкого огляду того, що зараз бачить скрапер. Відкриває у середовищі (профілі)
-    акаунта, щоб сторінка виглядала так само, як для скрапера.
+    Does not log in, verify the session, or save updated cookies. This tool quickly inspects what
+    the scraper currently sees, using the account profile so the page has the same environment.
     """
 
     def __init__(
@@ -36,13 +35,13 @@ class AccountSessionDebugger:
     async def _resolve(
         self, account_id: AccountId | None, anonymous: bool
     ) -> tuple[StorageState | None, BrowserProfile | None, AccountId | None]:
-        """Сесія та профіль акаунта (``anonymous`` — ні того, ні іншого: «чистий» браузер)."""
+        """Account session and profile (``anonymous`` disables both for a clean browser)."""
         if anonymous:
             return None, None, None
         target = account_id or await self._accounts.get_active_id()
         if target is None:
             return None, None, None
-        account = await self._accounts.ensure_profile(target)  # AccountNotFoundError, якщо id невірний
+        account = await self._accounts.ensure_profile(target)  # May raise AccountNotFoundError.
         storage = account.session.storage_state if account.session else None
         return storage, account.profile, target
 
@@ -55,10 +54,10 @@ class AccountSessionDebugger:
         anonymous: bool = False,
     ) -> DebugOpenResult:
         storage_state, profile, used = await self._resolve(account_id, anonymous)
-        _log.info("Debug-відкриття сторінки", extra={"account": str(used) if used else "anonymous"})
+        _log.info("Opened page for debugging", extra={"account": str(used) if used else "anonymous"})
         async with self._factory.open(storage_state, headless=headless, profile=profile) as session:
             await session.page.goto(url, wait_until="domcontentloaded")
-            with contextlib.suppress(Exception):  # дати JS домалювати сторінку, але не чекати вічно
+            with contextlib.suppress(Exception):  # Let page scripts settle, but do not wait indefinitely.
                 await session.page.wait_for_load_state("networkidle", timeout=5000)
             path = await self._diagnostics.capture(
                 session.page, reason="debug-open", recorder=session.recorder

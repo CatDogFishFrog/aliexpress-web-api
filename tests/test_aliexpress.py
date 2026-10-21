@@ -41,7 +41,7 @@ class TestSignals:
         assert decide_login_success(xman_rotated=True)
         assert decide_login_success(response_success=True)
         assert not decide_login_success()
-        assert not decide_login_success(has_ticket=True, response_risk=True)  # ризик перекриває все
+        assert not decide_login_success(has_ticket=True, response_risk=True)  # Risk rejection overrides all.
 
     def test_read_cookie(self) -> None:
         cookies = [{"name": "a", "value": ""}, {"name": "a", "value": "1"}, {"name": "b", "value": "2"}]
@@ -70,7 +70,7 @@ class TestPageUrls:
         [
             "https://www.aliexpress.com/",
             "https://www.aliexpress.com/item/1005001.html",
-            "https://www.aliexpress.com/item/1.html?redirectUrl=%2Flogin",  # «login» лише в query
+            "https://www.aliexpress.com/item/1.html?redirectUrl=%2Flogin",  # "login" appears only in query.
             "about:blank",
         ],
     )

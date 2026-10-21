@@ -1,4 +1,4 @@
-"""Прикладний шар: сценарії використання та порти (інтерфейси) до зовнішнього світу.
+"""Application layer: use cases and ports (interfaces) to the outside world.
 
-Залежить лише від ``domain``. Не знає про patchright, файлову систему чи змінні середовища.
+Depends only on ``domain``. It does not know about patchright, the filesystem, or environment variables.
 """

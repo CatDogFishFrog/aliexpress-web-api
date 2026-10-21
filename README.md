@@ -1,123 +1,111 @@
-# aliweb — неофіційний AliExpress Web API (каркас)
+# aliweb — unofficial AliExpress Web API (scaffold)
 
-Скрапінг AliExpress через [patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-python). Python **>= 3.14**.
+Scrapes AliExpress with [patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-python). Python **>= 3.14**.
 
-## Встановлення
+## Installation
 
 ```bash
-uv venv --python 3.14 && source .venv/bin/activate     # або python3.14 -m venv .venv
+uv venv --python 3.14 && source .venv/bin/activate     # or python3.14 -m venv .venv
 uv pip install -e ".[dev]"
-patchright install chromium                            # браузер patchright: потрібен скраперу завжди
+patchright install chromium                            # required by the scraper
 cp .env.example .env
-aliweb secret generate                                 # вставте результат у ALIWEB_SESSION_SECRET
+aliweb secret generate                                 # put the result in ALIWEB_SESSION_SECRET
 ```
 
-> Збережіть `ALIWEB_SESSION_SECRET` окремо: без нього акаунти та `.bin`-файли не розшифрувати.
+> Store `ALIWEB_SESSION_SECRET` separately. Without it, saved accounts and `.bin` files cannot be decrypted.
 
-## Браузери
+## Browsers
 
-| Що | Який браузер | Де задається |
+| Use | Browser | Configuration |
 |---|---|---|
-| **Скрапер** (робота API) | **Завжди браузер patchright** (`patchright install chromium`) | режим безголовий/з вікном — `ALIWEB_HEADLESS` у `.env` |
-| **Вхід в акаунт** | на вибір — під час запуску логіну | прапорці `aliweb login` |
+| **Scraper** (API operations) | **Always patchright** (`patchright install chromium`) | Headless/headful mode: `ALIWEB_HEADLESS` in `.env` |
+| **Account login** | Choose when starting the login command | `aliweb login` options |
 
-Вхід (`aliweb login <id> …`):
+Account login (`aliweb login <id> ...`):
 
 ```bash
-aliweb login main                                  # безголовий, браузер patchright (сервер лише з терміналом)
-aliweb login main --headful                        # з вікном, браузер patchright
-aliweb login main --headful --browser chrome       # з вікном, встановлений Google Chrome
-aliweb login main --headful --browser msedge       # з вікном, встановлений Microsoft Edge
-aliweb login main --headful --browser-path "C:\Program Files\Brave\brave.exe"   # власний chromium-сумісний
+aliweb login main                                  # headless, patchright (for terminal-only servers)
+aliweb login main --headful                        # show the patchright browser window
+aliweb login main --headful --browser chrome       # installed Google Chrome
+aliweb login main --headful --browser msedge       # installed Microsoft Edge
+aliweb login main --headful --browser-path "C:\Program Files\Brave\brave.exe"   # custom Chromium-compatible browser
 ```
 
-- Безголовий вхід **лише** в браузері patchright; `--browser`/`--browser-path` без `--headful` дають помилку.
-- Chrome/Edge/власний браузер повинні бути встановлені в системі, завантажувати їх через patchright не треба.
-- Після входу сесія зберігається, а скрапінг далі йде в браузері patchright з цими cookie.
-  Якщо AliExpress реагуватиме на різницю браузерів (розлогін/капча) — входьте з `--browser chromium`.
-- Сервер без графіки: увійдіть `--headful` на Windows, зробіть `aliweb session export`, перенесіть `.bin`
-  на сервер і `aliweb session import`.
+- Headless login only supports patchright; `--browser` and `--browser-path` require `--headful`.
+- Chrome, Edge, and custom browsers must already be installed; patchright does not download them.
+- After login, the session is saved. Scraping continues in patchright using those cookies. If AliExpress reacts to the browser difference (logout or captcha), log in with `--browser chromium`.
+- On a server without a graphical desktop, log in with `--headful` on Windows, run `aliweb session export`, and transfer the `.bin` file to the server with `aliweb session import`.
 
-## Швидкий старт (CLI)
+## Quick Start (CLI)
 
 ```bash
-aliweb accounts add main --login me@mail.com           # пароль запитає інтерактивно
-aliweb accounts add manual-only                        # акаунт БЕЗ облікових даних (для ручного входу)
-aliweb accounts update main --login new@mail.com       # змінити логін/пароль існуючого акаунта
-aliweb accounts list                                   # * — активний акаунт
-aliweb accounts use other                              # перемкнути активний
-aliweb accounts rename main shop                       # назви-ідентифікатори
-aliweb check main                                      # чи жива збережена сесія
-aliweb session export main main.bin                    # без пароля; --include-credentials щоб з паролем
-aliweb session export main main.bin --passphrase-env MY_PHRASE   # окрема парольна фраза
+aliweb accounts add main --login me@mail.com           # prompts for password
+aliweb accounts add manual-only                        # account without credentials (for manual login)
+aliweb accounts update main --login new@mail.com       # update an existing account's login/password
+aliweb accounts list                                   # * marks the active account
+aliweb accounts use other                              # switch the active account
+aliweb accounts rename main shop                       # rename an account identifier
+aliweb check main                                      # check the saved session
+aliweb session export main main.bin                    # without a password; use --include-credentials to include it
+aliweb session export main main.bin --passphrase-env MY_PHRASE
 aliweb session import main.bin --as copy --overwrite
 aliweb logout main
 ```
 
-### Вхід в акаунт
+### Logging In
 
 ```bash
-aliweb login main                                  # автоматично, безголовий, браузер patchright
-aliweb login main --headful                        # автоматично, з вікном
-aliweb login main --headful --browser msedge       # автоматично, у Microsoft Edge
-aliweb login main --headful --manual               # РУЧНИЙ: ви входите самі, програма чекає
+aliweb login main                                  # automatic, headless, patchright
+aliweb login main --headful                        # automatic, with a browser window
+aliweb login main --headful --browser msedge       # automatic, in Microsoft Edge
+aliweb login main --headful --manual               # manual: you log in while the program waits
 aliweb login main --headful --browser chrome --manual --manual-timeout 900
-aliweb login main --fresh                          # ігнорувати збережену сесію
+aliweb login main --fresh                          # ignore the saved session
 ```
 
-- Автоматичний вхід **людиноподібний**: набір по символах, рухи миші по кривих, природні кліки й скрол
-  (`ALIWEB_HUMAN_INPUT`, `ALIWEB_HUMAN_SPEED` у `.env`).
-- Якщо акаунт уже авторизований, команда скаже про це й нічого не робитиме (`--fresh` — примусовий новий вхід).
-- Якщо AliExpress показує слайдер-капчу, програма проходить її сама (кілька спроб). Якщо автоматика не допомагає,
-  використайте `--manual`.
-- `--manual`: автоматизацію вимкнено. Програма відкриває сторінку входу й чекає, поки ви увійдете (капча, пасскі, QR, соцмережі — що завгодно).
-  Коли вхід підтверджено, вона забирає сесію й **закриває браузер**. Потрібен `--headful`; пароль у акаунті не обов'язковий.
-  Закрили вікно раніше, ніж увійшли — сесію не збережено.
+- Automatic login uses human-like typing, mouse movement, clicks, and scrolling (`ALIWEB_HUMAN_INPUT`, `ALIWEB_HUMAN_SPEED` in `.env`).
+- If the account is already authenticated, the command reports it and does nothing (`--fresh` starts a new login).
+- If AliExpress shows a slider captcha, the program attempts to solve it. If automation does not work, use `--manual`.
+- `--manual` disables automation. The program opens the login page and waits for you to sign in by any available method (captcha, passkey, QR code, social login, etc.). Once login is confirmed, it captures the session and closes the browser. Requires `--headful`; account credentials are optional.
+- If you close the window before signing in, the session is not saved.
 
-### Профіль середовища акаунта (відбиток браузера)
+### Account Browser Profile
 
-Кожен акаунт має **постійне браузерне середовище**: User-Agent, відбиток (navigator, екран, відеокарта, ядра, пам'ять…), мова, часовий пояс, розмір вікна.
-Воно створюється один раз (при першому вході чи використанні акаунта) і зберігається разом із сесією в зашифрованому файлі, тож наступного дня акаунт
-працює в тому самому «середовищі». Дані реалістичні: генератор відкидає неправдоподібні комбінації, а версія Chrome в UA завжди відповідає реальному рушію.
+Each account has a **persistent browser environment**: User-Agent, fingerprint (navigator, screen, GPU, cores, memory, etc.), locale, timezone, and window size. It is created once (on first login or use) and saved with the session in an encrypted file, so the account uses the same environment on subsequent days. The generator rejects unrealistic combinations and matches the Chrome version in the User-Agent to the actual engine.
 
 ```bash
-aliweb profile show main                 # що саме «заявляє» акаунт: ОС, екран, GPU, мова…
-aliweb profile regenerate main           # створити НОВЕ середовище (потім: aliweb login main --fresh)
-aliweb accounts list                     # у кожного акаунта видно його профіль (напр. «windows 1920x1080»)
+aliweb profile show main                 # OS, screen, GPU, locale, and other profile details
+aliweb profile regenerate main           # create a NEW profile (then run: aliweb login main --fresh)
+aliweb accounts list                     # each account shows its profile, e.g. "windows 1920x1080"
 ```
 
-Параметри створення профілю — у `.env`: `ALIWEB_FINGERPRINT_OS` (за замовч. ОС вашого комп'ютера), `ALIWEB_LOCALE`, `ALIWEB_TIMEZONE`.
-Вони діють лише для НОВИХ профілів.
+Profile creation settings are in `.env`: `ALIWEB_FINGERPRINT_OS` (defaults to the host OS), `ALIWEB_LOCALE`, and `ALIWEB_TIMEZONE`. These settings apply only to NEW profiles.
 
-### Експорт та імпорт сесій
+### Exporting and Importing Sessions
 
 ```bash
-aliweb session export main main.bin                       # сесія + відбиток браузера (без логіну/пароля)
-aliweb session export main main.bin --include-credentials # + логін і пароль акаунта
-aliweb session export main main.bin --no-fingerprint      # без відбитка (при імпорті створиться новий)
-aliweb session export main main.bin --passphrase          # окрема фраза, вводиться в терміналі (приховано)
-aliweb session import main.bin --as copy --passphrase     # та сама фраза при імпорті
+aliweb session export main main.bin                       # session + browser profile, no login/password
+aliweb session export main main.bin --include-credentials # also include account login and password
+aliweb session export main main.bin --no-fingerprint      # omit profile; a new one is created on import
+aliweb session export main main.bin --passphrase          # hidden passphrase prompt in the terminal
+aliweb session import main.bin --as copy --passphrase     # enter the same passphrase during import
 ```
 
-- **`--include-credentials`**: у пакет потрапляє логін і пароль. Тоді імпортований акаунт після `logout` зможе увійти автоматично (`aliweb login`).
-  Без нього сесія працює, доки не спливе, а повторний вхід вимагатиме задати облікові дані (`aliweb accounts update`) або ручного входу (`--manual`).
-- **Відбиток** (середовище) їде з сесією за замовчуванням, щоб cookie й надалі працювали в тому самому «браузері». `--no-fingerprint` вимикає це.
-- **`--passphrase` / `--passphrase-env`**: пакет шифрується цією фразою **замість** `ALIWEB_SESSION_SECRET`. Потрібно, коли пакет їде на комп'ютер з іншим
-  `.env`: той самий пакет там відкриється лише зі згаданою фразою. `--passphrase` просить ввести її в терміналі (приховано, при експорті з підтвердженням);
-  `--passphrase-env ІМ'Я_ЗМІННОЇ` бере її зі змінної середовища (передавати **ім'я** змінної, а не саму фразу). Мінімум 16 символів. Значення фрази
-  в аргументі командного рядка навмисно не приймається: воно залишається в історії команд.
+- **`--include-credentials`** adds the login and password to the bundle. After import, the account can log in automatically with `aliweb login` after logout. Without it, the session works until it expires; to log in again, update account credentials (`aliweb accounts update`) or use manual login (`--manual`).
+- The browser profile is included by default so the session cookies continue to work in the same environment. `--no-fingerprint` omits it.
+- **`--passphrase` / `--passphrase-env`** encrypts the bundle with this passphrase instead of `ALIWEB_SESSION_SECRET`. Use it to transfer a bundle to a computer with a different `.env`; the bundle can only be opened there with the same passphrase. `--passphrase` prompts in the terminal (hidden input, with confirmation on export). `--passphrase-env VARIABLE_NAME` reads the value from an environment variable; pass the variable **name**, not the passphrase. Minimum length: 16 characters. Passing the passphrase as a command-line argument is deliberately unsupported because it would remain in shell history.
 
-### Дебаг сторінок
+### Page Diagnostics
 
 ```bash
-aliweb debug open "https://www.aliexpress.com/"             # як є: з сесією активного акаунта, якщо вона є, інакше анонімно
-aliweb debug open "https://www.aliexpress.com/" --anonymous # без cookie
+aliweb debug open "https://www.aliexpress.com/"             # use the active account session if available; otherwise anonymous
+aliweb debug open "https://www.aliexpress.com/" --anonymous # no cookies
 aliweb debug open "https://www.aliexpress.com/" --account second --headful
 ```
 
-`debug open` **не входить** в акаунт, не перевіряє сесію й не змінює її. Це швидкий огляд того, що зараз бачить скрапер.
+`debug open` does **not** log in, verify the session, or modify it. It quickly shows what the scraper currently sees.
 
-## Використання як бібліотеки
+## Using as a Library
 
 ```python
 import asyncio
@@ -135,20 +123,17 @@ async def main() -> None:
                 print(product.title, product.ref)
 
 
-asyncio.run(main())  # поки екстрактори — заглушки: підніметься ExtractorNotImplementedError
+asyncio.run(main())  # raises ExtractorNotImplementedError until extractors are implemented
 ```
 
-## Діагностика
+## Diagnostics
 
-При помилці (політика `ALIWEB_DUMP_POLICY=on_error`) у `data/diagnostics/<час>_<причина>_<id>/`:
-`screenshot.png`, `snapshot.mhtml` (повна копія сторінки з ресурсами — відкривати в Chromium/Chrome/Edge),
-`page.html`, `network.jsonl`, `report.json`. Шлях також додається до тексту помилки.
-`ALIWEB_DUMP_POLICY=always` додатково дампить кожну контрольну точку потоку входу.
+When an error occurs (`ALIWEB_DUMP_POLICY=on_error`), artifacts are saved to `data/diagnostics/<time>_<reason>_<id>/`: `screenshot.png`, `snapshot.mhtml` (complete page copy with resources; open in Chromium, Chrome, or Edge), `page.html`, `network.jsonl`, and `report.json`. The path is also added to the error message. `ALIWEB_DUMP_POLICY=always` additionally captures each login flow checkpoint.
 
-## Розробка
+## Development
 
 ```bash
-pytest                 # 170+ тестів, включно з архітектурними інваріантами
+pytest                 # 170+ tests, including architecture invariants
 ruff check . && ruff format --check .
 mypy                   # strict
 ```

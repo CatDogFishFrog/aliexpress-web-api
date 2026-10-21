@@ -1,14 +1,13 @@
-"""Моделі каталогу: товари, продавці, пошук.
+"""Catalog models: products, sellers, and search.
 
-ПОЛІТИКА ГНУЧКОСТІ (важливо для майбутніх змін, див. memory/08-api-and-models.md):
-  * Ідентифікатор сутності — її канонічне посилання (:class:`ProductRef`, :class:`SellerRef`).
-  * Обов'язкові лише ``ref`` і назва. Усе інше — ``None``/порожнє за замовчуванням: сторінка
-    може не віддавати дане поле, і це не помилка.
-  * Нові поля додаються ЛИШЕ як необов'язкові (з default) — зворотна сумісність.
-  * Неперевірені/нестабільні дані кладемо в ``extra``; коли поле стабілізується —
-    «підвищуємо» його до типізованого поля.
-  * «Простий» варіант (``Simple*``) — те, що видно у видачі/списку без відкриття сторінки;
-    «повний» містить посилання на простий (композиція), а не дублює поля.
+Flexibility policy (see memory/08-api-and-models.md):
+    * An entity is identified by its canonical URL (:class:`ProductRef`, :class:`SellerRef`).
+    * Only ``ref`` and the name are required. Other fields default to ``None`` or empty values because
+        a page may omit them.
+    * New fields must be optional (with defaults) to preserve compatibility.
+    * Unverified or unstable data belongs in ``extra``; promote it to a typed field once stable.
+    * A ``Simple*`` model contains data visible in search results without opening a page; a full model
+        references the simple model instead of duplicating its fields.
 """
 
 from __future__ import annotations
@@ -22,11 +21,11 @@ from typing import Any
 from aliweb.domain.urls import canonicalize_url, extract_item_id
 
 
-# ── Базові значення ────────────────────────────────────────────────────────
+# ── Shared values ──────────────────────────────────────────────────────────
 @dataclass(frozen=True, slots=True)
 class Money:
     amount: Decimal
-    currency: str  # ISO-4217, напр. "USD"
+    currency: str  # ISO-4217, e.g. "USD"
 
     def __str__(self) -> str:
         return f"{self.amount} {self.currency}"
@@ -34,19 +33,19 @@ class Money:
 
 @dataclass(frozen=True, slots=True)
 class Rating:
-    """Оцінка (зазвичай 0..5) і кількість відгуків/оцінок, якщо відомі."""
+    """Rating (usually 0..5) and review count, when available."""
 
     value: Decimal | None = None
     count: int | None = None
 
 
-# ── Посилання-ідентифікатори ───────────────────────────────────────────────
+# ── URL identifiers ───────────────────────────────────────────────────────
 @dataclass(frozen=True, slots=True)
 class ProductRef:
-    """Ідентифікатор товару = канонічне посилання (див. :func:`canonicalize_url`).
+    """Product identifier represented by its canonical URL (see :func:`canonicalize_url`).
 
-    Відкрите питання: чи є варіант (SKU) частиною ідентичності — наразі ні, варіанти
-    описані у :class:`Product.variants`.
+    Open question: whether a variant (SKU) belongs to the identity. Currently it does not; variants
+    are described by :class:`Product.variants`.
     """
 
     url: str
@@ -56,7 +55,7 @@ class ProductRef:
 
     @property
     def item_id(self) -> str | None:
-        """Допоміжний числовий id з посилання (може бути ``None``). Не ідентифікатор."""
+        """Optional numeric ID parsed from the URL; it is not the identifier."""
         return extract_item_id(self.url)
 
     def __str__(self) -> str:
@@ -65,7 +64,7 @@ class ProductRef:
 
 @dataclass(frozen=True, slots=True)
 class SellerRef:
-    """Ідентифікатор продавця = канонічне посилання на його магазин/сторінку."""
+    """Seller identifier represented by the canonical URL of its store or page."""
 
     url: str
 
@@ -76,10 +75,10 @@ class SellerRef:
         return self.url
 
 
-# ── Продавці ───────────────────────────────────────────────────────────────
+# ── Sellers ────────────────────────────────────────────────────────────────
 @dataclass(frozen=True, slots=True)
 class SimpleSeller:
-    """Те, що про продавця відомо без відкриття його сторінки (напр. з картки товару)."""
+    """Seller information available without opening the seller page, such as from a product card."""
 
     ref: SellerRef
     name: str
@@ -89,7 +88,7 @@ class SimpleSeller:
 
 @dataclass(frozen=True, slots=True)
 class Seller:
-    """Повна інформація зі сторінки продавця."""
+    """Full information from a seller page."""
 
     summary: SimpleSeller
     description: str | None = None
@@ -104,10 +103,10 @@ class Seller:
         return self.summary.ref
 
 
-# ── Товари ─────────────────────────────────────────────────────────────────
+# ── Products ───────────────────────────────────────────────────────────────
 @dataclass(frozen=True, slots=True)
 class SimpleProduct:
-    """«Спрощений товар» — лише дані, доступні зі сторінки пошуку/списку."""
+    """A simplified product containing only data available in search results or lists."""
 
     ref: ProductRef
     title: str
@@ -123,7 +122,7 @@ class SimpleProduct:
 
 @dataclass(frozen=True, slots=True)
 class ProductVariant:
-    """Варіант товару (SKU): колір, розмір тощо. Структура навмисно вільна."""
+    """Product variant (SKU), such as a color or size. The structure is intentionally flexible."""
 
     name: str
     options: Mapping[str, str] = field(default_factory=dict)
@@ -135,7 +134,7 @@ class ProductVariant:
 
 @dataclass(frozen=True, slots=True)
 class Product:
-    """Повна інформація зі сторінки товару."""
+    """Full information from a product page."""
 
     summary: SimpleProduct
     description: str | None = None
@@ -150,9 +149,9 @@ class Product:
         return self.summary.ref
 
 
-# ── Пошук ──────────────────────────────────────────────────────────────────
+# ── Search ─────────────────────────────────────────────────────────────────
 class SortOrder(StrEnum):
-    """Порядок сортування видачі. Набір може розширюватись після дослідження сайту."""
+    """Search result sort order; options may expand as the site is studied."""
 
     RELEVANCE = "relevance"
     ORDERS = "orders"
@@ -163,7 +162,7 @@ class SortOrder(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class SearchQuery:
-    """Запит пошуку. ``filters`` — вільні фільтри, які інтерпретує адаптер."""
+    """Search query. ``filters`` contains arbitrary filters interpreted by the adapter."""
 
     text: str
     page: int = 1
@@ -172,9 +171,9 @@ class SearchQuery:
 
     def __post_init__(self) -> None:
         if not self.text.strip():
-            raise ValueError("Текст пошукового запиту порожній")
+            raise ValueError("Search query cannot be empty")
         if self.page < 1:
-            raise ValueError("Номер сторінки має бути >= 1")
+            raise ValueError("Page number must be >= 1")
 
     def with_page(self, page: int) -> SearchQuery:
         return replace(self, page=page)
@@ -182,7 +181,7 @@ class SearchQuery:
 
 @dataclass(frozen=True, slots=True)
 class SearchPage:
-    """Одна сторінка видачі."""
+    """A single search results page."""
 
     query: SearchQuery
     products: tuple[SimpleProduct, ...]
@@ -191,5 +190,5 @@ class SearchPage:
     extra: Mapping[str, Any] = field(default_factory=dict)
 
     def next_query(self) -> SearchQuery | None:
-        """Запит на наступну сторінку або ``None``, якщо її немає."""
+        """Query for the next page, or ``None`` if there is no next page."""
         return self.query.with_page(self.query.page + 1) if self.has_next else None

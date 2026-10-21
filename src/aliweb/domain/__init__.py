@@ -1,1 +1,1 @@
-"""Доменний шар: чисті моделі, правила й помилки. Жодного вводу/виводу та сторонніх бібліотек."""
+"""Domain layer: pure models, rules, and errors, without I/O or third-party libraries."""

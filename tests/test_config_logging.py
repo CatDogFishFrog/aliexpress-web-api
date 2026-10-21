@@ -74,7 +74,7 @@ class TestSettings:
         env_file.write_text("ALIWEB_LOCALE=uk-UA\nALIWEB_TIMEZONE=Europe/Kyiv\n", encoding="utf-8")
         s = Settings.from_env({"ALIWEB_LOCALE": "en-GB"}, dotenv_path=env_file)
         assert s.browser.locale == "en-GB" and s.browser.timezone_id == "Europe/Kyiv"
-        assert "ALIWEB_TIMEZONE" not in os.environ  # .env не «протікає» в середовище процесу
+        assert "ALIWEB_TIMEZONE" not in os.environ  # .env values do not leak into the process environment.
 
 
 class TestBrowserOptions:
@@ -92,7 +92,7 @@ class TestBrowserOptions:
         state = {"cookies": [], "origins": []}
         opts = build_context_options(BrowserSettings(), state)
         assert opts["viewport"] == {"width": 1366, "height": 768} and opts["storage_state"] == state
-        assert "user_agent" not in opts  # UA свідомо не підміняємо
+        assert "user_agent" not in opts  # Deliberately preserve the browser's User-Agent.
         opts2 = build_context_options(BrowserSettings(viewport=None, timezone_id="Europe/Kyiv"), None)
         assert opts2["no_viewport"] is True and "storage_state" not in opts2
         assert opts2["timezone_id"] == "Europe/Kyiv"
@@ -143,13 +143,13 @@ class TestLogging:
                 handler.close()
 
     def test_bad_level_rejected(self, tmp_path: Path) -> None:
-        with pytest.raises(ValueError, match="рівень"):
+        with pytest.raises(ValueError, match="Unknown logging level"):
             configure_logging(LoggingSettings(level="LOUD"), logs_dir=tmp_path, redactor=Redactor())
         logging.getLogger("aliweb").handlers.clear()
 
 
 class TestLaunchOptionsPerBrowser:
-    """Вибір браузера для входу відображається на параметри запуску patchright."""
+    """Login browser selection maps to patchright launch options."""
 
     @pytest.mark.parametrize(
         ("choice", "expected"),
@@ -170,7 +170,7 @@ class TestLaunchOptionsPerBrowser:
         assert "channel" not in opts and "executable_path" not in opts
 
     def test_browser_is_not_configurable_via_env(self) -> None:
-        """Скрапер завжди на браузері patchright: змінних вибору браузера немає."""
+        """The scraper always uses patchright; browser selection is not configurable via environment."""
         env = {"ALIWEB_BROWSER_CHANNEL": "chrome", "ALIWEB_HEADFUL_CHANNEL": "msedge"}
         settings = Settings.from_env(env, dotenv_path=None)
         opts = build_launch_options(settings.browser, headless=False)
@@ -179,7 +179,7 @@ class TestLaunchOptionsPerBrowser:
     def test_missing_executable_gives_clear_error(self) -> None:
         from aliweb.infrastructure.browser.pool import check_executable_exists
 
-        with pytest.raises(ConfigurationError, match="не знайдено"):
+        with pytest.raises(ConfigurationError, match="Browser executable not found"):
             check_executable_exists("/definitely/not/here")
         check_executable_exists(None)
 

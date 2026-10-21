@@ -48,7 +48,7 @@ async def test_files_are_encrypted_and_private(file_repo: FileAccountRepository,
     assert b"COOKIE_VALUE_123" not in raw and b"p@ss-word" not in raw and b"user@mail.com" not in raw
     import sys
     if sys.platform != "win32":
-        assert (path.stat().st_mode & 0o077) == 0  # лише власник (POSIX)
+        assert (path.stat().st_mode & 0o077) == 0  # Owner-only permissions (POSIX).
 
 
 async def test_wrong_key_or_corruption_is_storage_error(tmp_path: Path) -> None:
@@ -62,11 +62,11 @@ async def test_wrong_key_or_corruption_is_storage_error(tmp_path: Path) -> None:
 
 
 async def test_file_swap_detected(tmp_path: Path) -> None:
-    """Файл, перейменований на чужий id, не має підмінити акаунт."""
+    """A file renamed to another account ID must not impersonate that account."""
     repo = FileAccountRepository(tmp_path, fast_cipher())
     await repo.save(make_account("a"))
     (tmp_path / "a.bin").rename(tmp_path / "b.bin")
-    with pytest.raises(StorageError, match="очікувався"):
+    with pytest.raises(StorageError, match="expected"):
         await repo.get(AccountId("b"))
 
 

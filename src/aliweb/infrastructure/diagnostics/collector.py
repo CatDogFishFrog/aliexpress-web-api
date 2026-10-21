@@ -1,12 +1,12 @@
-"""Збір діагностики: скріншот + повний дамп сторінки (MHTML) + HTML + звіт + мережевий журнал.
+"""Collect diagnostics: screenshot, full page dump (MHTML), HTML, report, and network log.
 
-Принципи:
-  * Діагностика НІКОЛИ не маскує оригінальну помилку: кожен артефакт збирається окремо,
-    збій одного не зупиняє інші, жодних винятків назовні.
-  * Секрети: перед зйомкою обнуляємо поля ``input[type=password]``; у текстових артефактах
-    замінюємо зареєстровані секрети; cookie та заголовки не зберігаємо взагалі.
-  * Дамп відкривається локально: ``snapshot.mhtml`` — це MHTML (повна копія сторінки з усіма
-    ресурсами) від Chromium через CDP ``Page.captureSnapshot``. Відкривати в Chromium/Chrome/Edge.
+Principles:
+    * Diagnostics never mask the original error. Collect each artifact independently; failure to
+        collect one must not prevent collecting the others or raise an exception to the caller.
+    * Clear ``input[type=password]`` fields before capture and redact registered secrets in text
+        artifacts. Never save cookies or headers.
+    * ``snapshot.mhtml`` is a complete local page copy with resources, captured by Chromium through
+        CDP ``Page.captureSnapshot``. Open it in Chromium, Chrome, or Edge.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ _MASK_PASSWORD_JS = """
   }
   return n;
 }
-"""  # noqa: S105 — це JS-код, не пароль
+"""  # noqa: S105 — JavaScript code, not a password.
 
 
 def _slug(text: str) -> str:
@@ -49,10 +49,10 @@ def _slug(text: str) -> str:
 
 
 class DiagnosticsCollector:
-    """Створює теку ``<root>/<UTC-час>_<причина>_<rand>/`` з артефактами.
+    """Create a ``<root>/<UTC-time>_<reason>_<rand>/`` directory for diagnostic artifacts.
 
-    Склад теки: ``screenshot.png``, ``snapshot.mhtml``, ``page.html``, ``network.jsonl``,
-    ``report.json`` (з переліком артефактів і причин, якщо якийсь не вдалося зібрати).
+    Contents include ``screenshot.png``, ``snapshot.mhtml``, ``page.html``, ``network.jsonl``,
+    and ``report.json`` with artifact statuses and any collection errors.
     """
 
     def __init__(self, settings: DiagnosticsSettings, root: Path, redactor: Redactor) -> None:
@@ -60,7 +60,7 @@ class DiagnosticsCollector:
         self._root = root
         self._redactor = redactor
 
-    # ── політика ───────────────────────────────────────────────────────────
+    # ── Policy ─────────────────────────────────────────────────────────────
     @property
     def policy(self) -> DumpPolicy:
         return self._settings.policy
@@ -68,18 +68,18 @@ class DiagnosticsCollector:
     async def on_error(
         self, page: Page | None, error: BaseException, recorder: NetworkRecorder | None
     ) -> Path | None:
-        """Дамп при помилці (якщо політика не ``never``)."""
+        """Capture a dump on error unless the policy is ``never``."""
         if self.policy is DumpPolicy.NEVER or page is None:
             return None
         return await self.capture(page, reason=type(error).__name__, error=error, recorder=recorder)
 
     async def checkpoint(self, page: Page, name: str, recorder: NetworkRecorder | None) -> Path | None:
-        """Дамп на контрольній точці (лише при політиці ``always``)."""
+        """Capture a checkpoint dump only when the policy is ``always``."""
         if self.policy is not DumpPolicy.ALWAYS:
             return None
         return await self.capture(page, reason=f"checkpoint-{name}", recorder=recorder)
 
-    # ── зйомка ─────────────────────────────────────────────────────────────
+    # ── Capture ────────────────────────────────────────────────────────────
     async def capture(
         self,
         page: Page,
@@ -89,13 +89,13 @@ class DiagnosticsCollector:
         recorder: NetworkRecorder | None = None,
         extra: dict[str, Any] | None = None,
     ) -> Path | None:
-        """Примусовий дамп. Повертає теку або ``None``, якщо навіть її не вдалося створити."""
+        """Force a dump and return its directory, or ``None`` if directory creation fails."""
         stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
         directory = self._root / f"{stamp}_{_slug(reason)}_{secrets.token_hex(2)}"
         try:
             ensure_private_dir(directory)
         except OSError:
-            _log.exception("Не вдалося створити теку діагностики")
+            _log.exception("Failed to create diagnostics directory")
             return None
 
         artifacts: dict[str, str] = {}
@@ -108,7 +108,7 @@ class DiagnosticsCollector:
         await self._step(artifacts, "report", self._report(page, directory, reason, error, artifacts, extra))
 
         self._apply_retention()
-        _log.warning("Діагностичний дамп збережено", extra={"dir": str(directory), "reason": reason})
+        _log.warning("Diagnostics saved", extra={"dir": str(directory), "reason": reason})
         return directory
 
     async def _step(self, artifacts: dict[str, str], name: str, coro: Any) -> None:
@@ -117,7 +117,7 @@ class DiagnosticsCollector:
             artifacts[name] = "ok"
         except Exception as exc:
             artifacts[name] = f"failed: {type(exc).__name__}: {self._redactor.redact(str(exc))[:200]}"
-            _log.debug("Крок діагностики %s не вдався", name, exc_info=True)
+            _log.debug("Diagnostics step %s failed", name, exc_info=True)
 
     @staticmethod
     async def _mask_passwords(page: Page) -> None:
@@ -179,7 +179,7 @@ class DiagnosticsCollector:
             json.dumps(report, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
         )
 
-    # ── ретеншн ────────────────────────────────────────────────────────────
+    # ── Retention ──────────────────────────────────────────────────────────
     def _apply_retention(self) -> None:
         try:
             dirs = sorted(p for p in self._root.iterdir() if p.is_dir())

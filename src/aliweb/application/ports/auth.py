@@ -10,33 +10,33 @@ from aliweb.domain.profile import BrowserProfile
 
 @dataclass(frozen=True, slots=True)
 class LoginRequest:
-    """Запит на вхід.
+    """Login request.
 
-    ``mode=None`` — режим скрапера з конфігурації (браузер patchright). ``storage_state`` —
-    попередні cookie (AliExpress тоді може запитати лише пароль). ``credentials`` можуть бути
-    ``None`` лише для ручного входу (``mode.manual``).
+    ``mode=None`` uses the scraper configuration (patchright browser). ``storage_state`` contains
+    existing cookies; AliExpress may then request only the password. ``credentials`` may be ``None``
+    only for manual login (``mode.manual``).
     """
 
     credentials: Credentials | None
     mode: LoginMode | None = None
     storage_state: StorageState | None = None
-    profile: BrowserProfile | None = None  # браузерне середовище акаунта (UA, відбиток…)
+    profile: BrowserProfile | None = None  # Account browser environment (UA, fingerprint, etc.).
 
 
 @dataclass(frozen=True, slots=True)
 class LoginResult:
-    """Результат входу. ``already_authenticated`` — сайт одразу визнав сесію дійсною (вхід не потрібен)."""
+    """Login result. ``already_authenticated`` indicates the site accepted the session without logging in."""
 
     session: SessionState
     already_authenticated: bool = False
 
 
 class Authenticator(Protocol):
-    """Виконує вхід/перевірку/вихід на конкретному сайті. Браузер — деталь реалізації."""
+    """Perform login, session verification, and logout for a site; browser details are internal."""
 
     async def login(self, request: LoginRequest) -> LoginResult:
         """Raises:
-        AuthenticationError: нащадки (ризик-контроль, капча, 2FA тощо).
+        AuthenticationError: subclasses such as risk-control, captcha, or 2FA errors.
         """
         ...
 
@@ -49,17 +49,17 @@ class Authenticator(Protocol):
     ) -> bool: ...
 
     async def logout(self, session: SessionState) -> None:
-        """Best-effort вихід на боці сайту. Локальне очищення робить сервіс."""
+        """Best-effort remote logout. The service clears local state."""
         ...
 
 
 class TwoFactorPrompt(Protocol):
-    """Джерело коду 2FA (консоль, Telegram, веб-форма…)."""
+    """Source of 2FA codes (console, Telegram, web form, etc.)."""
 
     async def ask_code(self, hint: str) -> str | None:
-        """Повертає код або ``None``.
+        """Return a code or ``None``.
 
         Raises:
-            TwoFactorRequiredError: якщо інтерактивне введення неможливе.
+            TwoFactorRequiredError: if interactive input is unavailable.
         """
         ...

@@ -1,7 +1,7 @@
-"""aliweb — неофіційний AliExpress Web API (скрапінг через patchright).
+"""aliweb is an unofficial AliExpress Web API built with patchright.
 
-Публічна точка входу — фасад :class:`aliweb.api.AliExpressWebApi`.
-Імпорти виконуються ліниво, щоб `import aliweb` не тягнув браузерні залежності.
+The public entry point is :class:`aliweb.api.AliExpressWebApi`.
+Imports are lazy so ``import aliweb`` does not load browser dependencies.
 """
 
 from typing import TYPE_CHECKING

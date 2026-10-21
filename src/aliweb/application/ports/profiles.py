@@ -6,10 +6,10 @@ from aliweb.domain.profile import BrowserProfile
 
 
 class ProfileGenerator(Protocol):
-    """Створює реалістичний профіль браузерного середовища для акаунта."""
+    """Create a realistic browser environment profile for an account."""
 
     def generate(self) -> BrowserProfile:
         """Raises:
-        ProfileGenerationError: не вдалося отримати реалістичний профіль.
+        ProfileGenerationError: if a realistic profile could not be generated.
         """
         ...

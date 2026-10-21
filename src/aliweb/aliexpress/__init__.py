@@ -1,5 +1,5 @@
-"""Адаптер AliExpress: усе, що знає про конкретний сайт (селектори, потік входу, URL, екстрактори).
+"""AliExpress adapter: site-specific selectors, login flow, URLs, and extractors.
 
-Реалізує порти ``application`` (Authenticator, CatalogGateway, SellerGateway). Це єдине
-місце, яке доведеться правити, коли AliExpress змінить верстку.
+Implements ``application`` ports (Authenticator, CatalogGateway, SellerGateway). This is the only
+layer that should need changes when the AliExpress site layout changes.
 """

@@ -1,4 +1,4 @@
-"""Логіка рішень після відправки пароля. Тут жила головна помилка: RGV587 вважали вироком."""
+"""Decision logic after password submission; RGV587 was previously treated as a final rejection."""
 
 from __future__ import annotations
 
@@ -48,12 +48,12 @@ class TestSuccess:
 
 class TestRiskIsTriggerNotVerdict:
     def test_regression_risk_response_alone_does_not_fail_immediately(self) -> None:
-        """Лог користувача: RGV587 → за 0,2 с RiskControlError, хоча слайдер ще вантажився."""
+        """Regression: RGV587 previously raised RiskControlError after 0.2s while the slider was loading."""
         state = OutcomeState()
         assert decide(snap(now=100.0, verdict=RISK, seq=1), state, CFG) is Decision.WAIT
         assert (
             decide(snap(now=103.0, verdict=RISK, seq=1), state, CFG) is Decision.WAIT
-        )  # слайдер вантажиться ~3 с
+        )  # The slider takes about three seconds to load.
 
     def test_captcha_dialog_is_solved(self) -> None:
         state = OutcomeState()
@@ -74,7 +74,7 @@ class TestRiskIsTriggerNotVerdict:
         assert decide(first, state, CFG) is Decision.SOLVE_CAPTCHA
         state.record_solve_attempt(first)
         state.solved_at = 5.0
-        # діалог зник, сторінка сама повторила запит і отримала SUCCESS
+        # The dialog disappeared; the page retried and received SUCCESS.
         assert decide(snap(now=7, verdict=OK, seq=2), state, CFG) is Decision.SUCCESS
 
     def test_after_solving_wait_then_resubmit_once_then_fail(self) -> None:
@@ -83,7 +83,7 @@ class TestRiskIsTriggerNotVerdict:
         decide(first, state, CFG)
         state.record_solve_attempt(first)
         state.solved_at = 5.0
-        stale = lambda t: snap(now=t, verdict=RISK, seq=1)  # noqa: E731 — нового запиту немає
+        stale = lambda t: snap(now=t, verdict=RISK, seq=1)  # noqa: E731 — no new request was received.
         assert decide(stale(8), state, CFG) is Decision.WAIT
         assert decide(stale(5 + CFG.retry_after_solve_s + 0.1), state, CFG) is Decision.RESUBMIT
         state.resubmits += 1
@@ -123,6 +123,6 @@ class TestTwoFactor:
 
 
 def test_config_defaults_sane() -> None:
-    assert CFG.risk_grace_s >= 6  # слайдер вантажиться ~3 с — запас обов'язковий
+    assert CFG.risk_grace_s >= 6  # Allow time for the slider to load.
     assert CFG.max_captcha_attempts >= 2
     _ = pytest

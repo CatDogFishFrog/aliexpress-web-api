@@ -52,8 +52,8 @@ def test_garbage_and_truncated_rejected() -> None:
 def test_untrusted_scrypt_params_bounded() -> None:
     cipher = fast_cipher()
     blob = bytearray(cipher.encrypt(b"x"))
-    blob[5] = 30  # log2(N)=30 → гігантська пам'ять: має відхилятись ДО виведення ключа
-    with pytest.raises(DecryptionError, match=r"межами|пам'ять"):
+    blob[5] = 30  # log2(N)=30 requires excessive memory and must be rejected before key derivation.
+    with pytest.raises(DecryptionError, match=r"out of range|too much memory"):
         cipher.decrypt(bytes(blob))
 
 

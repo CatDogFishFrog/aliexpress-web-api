@@ -1,4 +1,4 @@
-"""Безпечна навігація: ретраї, виявлення редиректу на логін та антибот-сторінок."""
+"""Resilient navigation with retries and login redirect or anti-bot page detection."""
 
 from __future__ import annotations
 
@@ -17,12 +17,12 @@ _log = logging.getLogger(__name__)
 async def open_checked(
     session: BrowserSession, url: str, *, attempts: int = 3, base_delay_s: float = 1.0
 ) -> None:
-    """Відкриває ``url`` з ретраями на мережеві збої/таймаути.
+    """Open ``url`` with retries for network failures and timeouts.
 
     Raises:
-        NavigationError: усі спроби вичерпано.
-        CaptchaChallengeError: показано антибот-сторінку (ретрай не допоможе).
-        SessionExpiredError: перекинуло на сторінку входу (сесія слетіла).
+        NavigationError: all attempts failed.
+        CaptchaChallengeError: an anti-bot page was shown; retrying will not help.
+        SessionExpiredError: redirected to the login page; the session expired.
     """
     last_error: Exception | None = None
     for attempt in range(1, attempts + 1):
@@ -31,14 +31,14 @@ async def open_checked(
             break
         except PlaywrightError as exc:
             last_error = exc
-            _log.warning("Навігація не вдалась", extra={"attempt": attempt, "url": url})
+            _log.warning("Navigation failed", extra={"attempt": attempt, "url": url})
             if attempt < attempts:
                 await asyncio.sleep(base_delay_s * 2 ** (attempt - 1))
     else:
-        raise NavigationError(f"Не вдалося відкрити {url}: {last_error}") from last_error
+        raise NavigationError(f"Failed to open {url}: {last_error}") from last_error
 
     final_url = session.page.url
     if looks_like_challenge_url(final_url):
-        raise CaptchaChallengeError(f"Антибот-сторінка замість {url}")
+        raise CaptchaChallengeError(f"Anti-bot page encountered instead of {url}")
     if looks_like_login_url(final_url) and not looks_like_login_url(url):
-        raise SessionExpiredError(f"Сесія недійсна: {url} перекинуло на {final_url}")
+        raise SessionExpiredError(f"Session is invalid: {url} redirected to {final_url}")

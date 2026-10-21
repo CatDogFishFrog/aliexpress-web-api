@@ -6,7 +6,7 @@ from aliweb.domain.catalog import Product, ProductRef, SearchPage, SearchQuery, 
 
 
 class CatalogGateway(Protocol):
-    """Доступ до пошуку та товарів. Реалізація — скрапінг (``aliweb.aliexpress``)."""
+    """Search and product access, implemented by scraping in ``aliweb.aliexpress``."""
 
     async def search(self, query: SearchQuery) -> SearchPage: ...
 

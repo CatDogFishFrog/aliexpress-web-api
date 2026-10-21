@@ -1,4 +1,4 @@
-"""Сценарії автентифікації: вхід, вихід, гарантування дійсної сесії."""
+"""Authentication use cases: login, logout, and ensuring a valid session."""
 
 from __future__ import annotations
 
@@ -17,9 +17,9 @@ _log = logging.getLogger(__name__)
 
 
 class AuthService:
-    """Оркеструє вхід/вихід акаунтів поверх :class:`Authenticator`.
+    """Orchestrate account login and logout through :class:`Authenticator`.
 
-    Не знає про браузер: усе, що стосується сайту, — за портом ``Authenticator``.
+    Browser details remain behind the ``Authenticator`` port.
     """
 
     def __init__(
@@ -43,23 +43,23 @@ class AuthService:
     async def login(
         self, account_id: AccountId, *, mode: LoginMode | None = None, fresh: bool = False
     ) -> LoginResult:
-        """Входить в акаунт та зберігає сесію.
+        """Log in to an account and save its session.
 
         Args:
-            mode: режим і браузер входу (``LoginMode``); ``None`` — як у скрапера (з конфігурації).
-                Для ручного входу (``mode.manual``) облікові дані не потрібні.
-            fresh: ігнорувати наявну сесію (вхід «з чистого аркуша»).
+            mode: LoginMode and browser choice; ``None`` uses the scraper configuration.
+                Credentials are not required for manual login (``mode.manual``).
+            fresh: Ignore any existing session and start a fresh login.
 
         Returns:
-            ``LoginResult``; ``already_authenticated=True``, якщо сайт одразу визнав збережену
-            сесію дійсною (повторний вхід не виконувався).
+            ``LoginResult``; ``already_authenticated=True`` if the site accepts the saved session
+            without performing another login.
         """
-        account = await self._accounts.ensure_profile(account_id)  # середовище акаунта фіксується тут
+        account = await self._accounts.ensure_profile(account_id)  # Fix the account environment here.
         manual = mode is not None and mode.manual
         if account.credentials is None and not manual:
             raise MissingCredentialsError(
-                f"В акаунті {account_id} не збережено логін/пароль — автоматичний вхід неможливий. "
-                "Задайте їх (`aliweb accounts update`) або увійдіть вручну: "
+                f"Account {account_id} has no saved login credentials, so automatic login is unavailable. "
+                "Set them with (`aliweb accounts update`) or log in manually: "
                 "`aliweb login <id> --headful --manual`"
             )
         previous = None if fresh or account.session is None else account.session.storage_state
@@ -74,20 +74,20 @@ class AuthService:
         await self._repo.save(account.with_session(result.session, now=self._clock()))
         self._verified_at[account_id] = self._monotonic()
         _log.info(
-            "Вхід виконано",
+            "Login completed",
             extra={"account": str(account_id), "already_authenticated": result.already_authenticated},
         )
         return result
 
     async def logout(self, account_id: AccountId) -> None:
-        """Вихід: best-effort на сайті + гарантоване очищення сесії у сховищі."""
+        """Log out on the site on a best-effort basis and always clear the stored session."""
         account = await self._accounts.get(account_id)
         if account.session is not None:
             try:
                 await self._auth.logout(account.session)
             except AliWebError:
                 _log.warning(
-                    "Вихід на боці сайту не вдався; сесію очищено локально",
+                    "Remote logout failed; cleared the local session",
                     extra={"account": str(account_id)},
                     exc_info=True,
                 )
@@ -95,7 +95,7 @@ class AuthService:
         self._verified_at.pop(account_id, None)
 
     async def ensure_session(self, account_id: AccountId, *, headless: bool | None = None) -> SessionState:
-        """Повертає дійсну сесію: перевіряє наявну (з TTL-кешем) або входить заново."""
+        """Return a valid session by verifying the current one or logging in again."""
         account = await self._accounts.ensure_profile(account_id)
         session = account.session
         relogin_mode = None if headless is None else LoginMode(headless=headless)
@@ -110,16 +110,17 @@ class AuthService:
             self._verified_at[account_id] = self._monotonic()
             return session
 
-        _log.info("Збережена сесія недійсна — повторний вхід", extra={"account": str(account_id)})
+        _log.info("Saved session is invalid; logging in again", extra={"account": str(account_id)})
         return (await self.login(account_id, mode=relogin_mode)).session
 
     async def check(self, account_id: AccountId, *, headless: bool | None = None) -> bool:
-        """Примусова перевірка збереженої сесії без повторного входу."""
+        """Force verification of the saved session without logging in again."""
         if (await self._accounts.get(account_id)).session is None:
             return False
-        account = await self._accounts.ensure_profile(account_id)  # сесія вже є — потрібне її середовище
+        # Use the environment associated with the session.
+        account = await self._accounts.ensure_profile(account_id)
         session = account.session
-        if session is None:  # лише для типізації: щойно перевірили, що сесія є
+        if session is None:  # For typing only; the session was checked above.
             return False
         valid = await self._auth.is_session_valid(session, headless=headless, profile=account.profile)
         if valid:
@@ -129,5 +130,5 @@ class AuthService:
         return valid
 
     def invalidate_verification(self, account_id: AccountId) -> None:
-        """Скидає кеш перевірки (напр. коли сторінка показала, що сесія слетіла)."""
+        """Clear the verification cache, for example when a page indicates an expired session."""
         self._verified_at.pop(account_id, None)

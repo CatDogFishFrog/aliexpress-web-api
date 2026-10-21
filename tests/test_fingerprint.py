@@ -1,4 +1,4 @@
-"""Профіль середовища: реалістичність, підгонка під реальний рушій, опції контексту, генератор."""
+"""Profile realism, engine retargeting, context options, and profile generation."""
 
 from __future__ import annotations
 
@@ -32,11 +32,11 @@ from aliweb.infrastructure.browser.session import build_context_options
 from aliweb.infrastructure.config import BrowserSettings, FingerprintSettings
 from tests.conftest import make_profile
 
-REAL_VERSION = "156.0.8078.4"  # версія Chrome for Testing з логу користувача
+REAL_VERSION = "156.0.8078.4"  # Chrome for Testing version from the user log.
 
 
 class TestChromiumBrands:
-    """Алгоритм GREASE-брендів Chromium звірено з відомими реальними значеннями sec-ch-ua."""
+    """Chromium GREASE brand generation matches known real sec-ch-ua values."""
 
     @pytest.mark.parametrize(
         ("major", "expected"),
@@ -97,7 +97,7 @@ class TestLanguages:
 
 
 def good_fingerprint() -> dict[str, Any]:
-    """Мінімальний «хороший» відбиток Windows для перевірки правил реалістичності."""
+    """Minimal valid Windows fingerprint for realism rule tests."""
     return {
         "navigator": {
             "userAgent": build_user_agent(ClaimedOs.WINDOWS, 147),
@@ -132,8 +132,8 @@ class TestRealismRules:
             (lambda f: f["navigator"].update(hardwareConcurrency=1), "hardwareConcurrency"),
             (lambda f: f["navigator"].update(vendor="Apple Computer, Inc."), "vendor"),
             (lambda f: f["screen"].update(devicePixelRatio=1.1458), "DPR"),
-            (lambda f: f["screen"].update(width=1024, height=600), "екран"),
-            (lambda f: f["screen"].update(availWidth=2000), "доступна"),
+            (lambda f: f["screen"].update(width=1024, height=600), "screen"),
+            (lambda f: f["screen"].update(availWidth=2000), "Available screen area exceeds"),
             (lambda f: f["videoCard"].update(renderer="Microsoft Basic Render Driver"), "GPU"),
             (lambda f: f["videoCard"].update(renderer="Google SwiftShader"), "GPU"),
             (
@@ -141,7 +141,7 @@ class TestRealismRules:
                     f["navigator"].update(hardwareConcurrency=20),
                     f["videoCard"].update(renderer="ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11)"),
                 ),
-                "потоків",
+                "threads",
             ),
         ],
     )
@@ -154,7 +154,7 @@ class TestRealismRules:
     def test_macos_with_linux_platform_rejected(self) -> None:
         fp = good_fingerprint()
         fp["navigator"]["userAgentData"]["platform"] = "macOS"
-        assert realism_issues(fp, ClaimedOs.MACOS)  # navigator.platform лишився Win32
+        assert realism_issues(fp, ClaimedOs.MACOS)  # navigator.platform is still Win32.
 
 
 class TestViewport:
@@ -164,7 +164,7 @@ class TestViewport:
         assert derive_viewport(fp, ClaimedOs.MACOS) == (1920, 1040 - 79)
 
     def test_window_is_never_wider_or_taller_than_the_screen(self) -> None:
-        """Регресія: зразок macOS мав outerWidth=1524 при екрані 1512 — вікно виходило за екран."""
+        """Regression: a macOS sample had outerWidth=1524 on a 1512px screen."""
         fp = {"screen": {"width": 1512, "height": 982, "outerWidth": 1524, "outerHeight": 1100}}
         width, height = derive_viewport(fp, ClaimedOs.MACOS)
         assert width <= 1512 and height <= 982
@@ -178,10 +178,10 @@ class TestViewport:
 
 
 class TestRetarget:
-    """UA і client hints підганяються під РЕАЛЬНИЙ рушій, решта середовища — незмінна."""
+    """Retarget UA and client hints to the actual engine while preserving the rest of the profile."""
 
     def test_follows_real_engine_version(self) -> None:
-        profile = make_profile()  # у файлі UA каже Chrome/147
+        profile = make_profile()  # The stored UA reports Chrome/147.
         fp = retarget(profile, REAL_VERSION)
         assert "Chrome/156.0.0.0" in fp["navigator"]["userAgent"]
         uad = fp["navigator"]["userAgentData"]
@@ -198,9 +198,9 @@ class TestRetarget:
     def test_environment_stays_identical_across_browser_updates(self) -> None:
         profile = make_profile()
         a, b = retarget(profile, "156.0.8078.4"), retarget(profile, "157.0.8100.2")
-        assert a["navigator"]["userAgent"] != b["navigator"]["userAgent"]  # версія оновилась
+        assert a["navigator"]["userAgent"] != b["navigator"]["userAgent"]  # Version changed.
         for key in ("hardwareConcurrency", "deviceMemory", "tag"):
-            assert a["navigator"][key] == b["navigator"][key]  # а «залізо» — те саме
+            assert a["navigator"][key] == b["navigator"][key]  # Hardware details are unchanged.
         assert a["screen"] == b["screen"] and a["videoCard"] == b["videoCard"]
 
     def test_unknown_version_keeps_major_from_profile(self) -> None:
@@ -242,7 +242,7 @@ class TestContextOptions:
     def test_profile_overrides_general_settings(self) -> None:
         settings = BrowserSettings(viewport=None, locale="de-DE", timezone_id="Europe/Berlin")
         options = build_context_options(settings, {"cookies": []}, make_profile(), REAL_VERSION)
-        assert "no_viewport" not in options  # емуляція вікна з профілю, а не «справжнє» вікно
+        assert "no_viewport" not in options  # Emulate the profile's viewport, not the real window.
         assert options["locale"] == "en-US" and options["timezone_id"] == "Europe/Kyiv"
         assert options["storage_state"] == {"cookies": []}
 
@@ -254,8 +254,8 @@ class TestInitScript:
     def test_script_embeds_retargeted_fingerprint(self) -> None:
         script = build_init_script(make_profile(), REAL_VERSION)
         assert "Chrome/156.0.0.0" in script and "Chrome/147.0.0.0" not in script
-        assert REAL_VERSION in script  # uaFullVersion у high-entropy userAgentData
-        assert script.lstrip().startswith("(") or "function" in script  # це JS
+        assert REAL_VERSION in script  # uaFullVersion in high-entropy userAgentData.
+        assert script.lstrip().startswith("(") or "function" in script  # This is JavaScript.
 
 
 class TestGeneratorAdapter:
@@ -276,7 +276,7 @@ class TestGeneratorAdapter:
 
 
 class TestRealGeneratorOutput:
-    """Перевіряє профілі, створені форком, через адаптер Aliweb для кожної ОС."""
+    """Test profiles from the fork through the Aliweb adapter for each supported OS."""
 
     @pytest.mark.parametrize("claimed_os", list(ClaimedOs))
     def test_generated_profiles_are_coherent(self, claimed_os: ClaimedOs) -> None:
@@ -310,7 +310,7 @@ class TestRealGeneratorOutput:
             FingerprintSettings(ClaimedOs.WINDOWS), locale="en-US", timezone_id=None
         )
         gpus = {generator.generate().gpu_renderer for _ in range(12)}
-        assert len(gpus) > 2  # різні акаунти — різні «комп'ютери»
+        assert len(gpus) > 2  # Different accounts can have different GPUs.
 
     def test_profile_survives_json_roundtrip(self) -> None:
         profile = BrowserForgeStealthProfileGenerator(
@@ -325,7 +325,7 @@ class TestDriftWarnings:
         with caplog.at_level(logging.WARNING):
             warn_on_environment_drift(profile, configured_locale="uk-UA", current_os=ClaimedOs.LINUX)
         text = " ".join(r.getMessage() for r in caplog.records)
-        assert "іншу ОС" in text and "ALIWEB_LOCALE" in text
+        assert "Profile OS differs from host OS" in text and "ALIWEB_LOCALE" in text
 
     def test_silent_when_consistent(self, caplog: pytest.LogCaptureFixture) -> None:
         with caplog.at_level(logging.WARNING):

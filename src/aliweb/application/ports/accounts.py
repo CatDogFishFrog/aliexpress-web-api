@@ -6,23 +6,23 @@ from aliweb.domain.accounts import Account, AccountId
 
 
 class AccountRepository(Protocol):
-    """Сховище акаунтів (разом із сесіями та обліковими даними)."""
+    """Account storage, including sessions and credentials."""
 
     async def list_ids(self) -> list[AccountId]: ...
 
     async def get(self, account_id: AccountId) -> Account | None: ...
 
     async def save(self, account: Account) -> None:
-        """Створює або повністю замінює акаунт."""
+        """Create or completely replace an account."""
         ...
 
     async def delete(self, account_id: AccountId) -> bool:
-        """``True``, якщо акаунт існував."""
+        """Return ``True`` if the account existed."""
         ...
 
 
 class ActiveAccountStore(Protocol):
-    """Зберігає, який акаунт зараз активний (використовується для роботи API)."""
+    """Store which account is active for API operations."""
 
     async def get(self) -> AccountId | None: ...
 

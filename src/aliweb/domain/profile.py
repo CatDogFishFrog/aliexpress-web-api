@@ -1,12 +1,12 @@
-"""Профіль браузерного середовища акаунта («відбиток»).
+"""Browser environment profile (fingerprint) for an account.
 
-Мета: кожен акаунт завжди працює в ОДНОМУ Й ТОМУ САМОМУ «середовищі» — той самий User-Agent,
-відбиток (navigator, екран, відеокарта…), мова, часовий пояс, розмір вікна. Інакше сайт щодня бачить
-той самий акаунт на «новому комп'ютері». Профіль зберігається разом із сесією в зашифрованому
-файлі акаунта і переноситься при експорті/імпорті.
+Each account uses the same environment on every run: User-Agent, fingerprint (navigator, screen,
+GPU, etc.), locale, timezone, and window size. Otherwise, the site may see the same account on a
+"new computer" each day. The profile is stored with the session in the encrypted account file and
+included in exports and imports.
 
-Домен не знає, як профіль створюється й застосовується (це справа ``infrastructure``): тут лише
-дані та безпечні геттери.
+The domain does not know how the profile is generated or applied (that belongs to ``infrastructure``);
+it only defines the data and safe getters.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ PROFILE_SCHEMA_VERSION = 1
 
 
 class ClaimedOs(StrEnum):
-    """Операційна система, яку «заявляє» профіль (вона ж у User-Agent та відбитку)."""
+    """Operating system declared by the profile and represented in its User-Agent and fingerprint."""
 
     WINDOWS = "windows"
     MACOS = "macos"
@@ -30,22 +30,22 @@ class ClaimedOs(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class BrowserProfile:
-    """Постійне середовище акаунта.
+    """Persistent account environment.
 
-    ``fingerprint`` — повний відбиток у форматі browserforge-stealth (navigator, screen, videoCard, headers…),
-    непрозорий для домену. Версія Chromium у User-Agent у ньому — лише на момент створення: при
-    кожному запуску вона підганяється під реальний рушій (як оновлюється справжній браузер).
+    ``fingerprint`` is an opaque browserforge-stealth fingerprint (navigator, screen, videoCard,
+    headers, etc.). Its Chromium version reflects creation time; each run retargets it to the actual
+    browser engine, as a real browser updates.
     """
 
     created_at: datetime
     claimed_os: ClaimedOs
-    locale: str  # напр. "en-US", "uk-UA"
-    timezone_id: str | None  # IANA, напр. "Europe/Kyiv"; None — часовий пояс хоста
-    viewport: tuple[int, int]  # внутрішній розмір вікна (CSS px), який емулюється
+    locale: str  # e.g. "en-US", "uk-UA".
+    timezone_id: str | None  # IANA, e.g. "Europe/Kyiv"; None uses the host timezone.
+    viewport: tuple[int, int]  # Emulated inner window size in CSS pixels.
     fingerprint: Mapping[str, Any]
     schema_version: int = PROFILE_SCHEMA_VERSION
 
-    # ── безпечні геттери (профіль міг прийти з файлу — не падаємо на відсутніх ключах) ──
+    # ── Safe getters (profiles loaded from files may omit keys) ──────────────
     def _section(self, name: str) -> Mapping[str, Any]:
         section = self.fingerprint.get(name)
         return section if isinstance(section, Mapping) else {}
@@ -79,6 +79,6 @@ class BrowserProfile:
 
     @property
     def label(self) -> str:
-        """Короткий підпис для списків: ``windows 1920x1080``."""
+        """Short label for lists, for example ``windows 1920x1080``."""
         width, height = self.screen_size
         return f"{self.claimed_os.value} {width}x{height}"

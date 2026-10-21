@@ -1,4 +1,4 @@
-"""Спільні фікстури та фейки для тестів (без браузера й мережі)."""
+"""Shared fixtures and fakes for tests without a browser or network."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ SECRET = Secret("test-secret-with-enough-length")
 
 
 def fast_cipher(secret: Secret = SECRET) -> ScryptAesGcmCipher:
-    """Швидкий scrypt для тестів (мінімально допустимий N)."""
+    """Fast scrypt configuration for tests using the minimum allowed N."""
     return ScryptAesGcmCipher(secret, ScryptParams(log2_n=12, r=8, p=1))
 
 
@@ -31,7 +31,7 @@ def make_session(cookie: str = "v1") -> SessionState:
 
 
 def make_profile(tag: str = "A", *, claimed_os: ClaimedOs = ClaimedOs.WINDOWS) -> BrowserProfile:
-    """Мінімальний профіль для тестів сервісів (``tag`` дозволяє розрізнити профілі)."""
+    """Minimal profile for service tests; ``tag`` distinguishes profiles."""
     return BrowserProfile(
         created_at=NOW,
         claimed_os=claimed_os,
@@ -53,7 +53,7 @@ def make_profile(tag: str = "A", *, claimed_os: ClaimedOs = ClaimedOs.WINDOWS) -
 
 
 class FakeProfileGenerator:
-    """Видає профілі A, B, C… по черзі й рахує виклики."""
+    """Return profiles A, B, C, etc. in sequence and count calls."""
 
     def __init__(self) -> None:
         self.calls = 0
@@ -80,7 +80,7 @@ def make_account(
 
 
 class MemoryRepository:
-    """Реалізація AccountRepository у пам'яті."""
+    """In-memory implementation of AccountRepository."""
 
     def __init__(self) -> None:
         self.items: dict[AccountId, Account] = {}
@@ -110,7 +110,7 @@ class MemoryActiveStore:
 
 
 class FakeAuthenticator:
-    """Керований фейк порту Authenticator."""
+    """Configurable fake for the Authenticator port."""
 
     def __init__(self) -> None:
         self.valid = True

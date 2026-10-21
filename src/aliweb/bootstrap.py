@@ -1,8 +1,8 @@
-"""Composition root — ЄДИНЕ місце, де конкретні класи зв'язуються з абстракціями.
+"""Composition root: the only place where concrete classes are wired to abstractions.
 
-Правила:
-  * Нова залежність підключається тут, а не імпортується «зсередини» сервісів.
-  * Жодна бізнес-логіка тут не живе — лише складання графа об'єктів.
+Rules:
+    * Add dependencies here instead of importing them inside services.
+    * Keep business logic out of this module; only assemble the object graph.
 """
 
 from __future__ import annotations
@@ -49,28 +49,28 @@ def build_api(
     two_factor: TwoFactorPrompt | None = None,
     redactor: Redactor | None = None,
 ) -> AliExpressWebApi:
-    """Збирає повний граф. Потребує ``ALIWEB_SESSION_SECRET`` (шифрування сховища).
+    """Build the full object graph. Requires ``ALIWEB_SESSION_SECRET`` to encrypt storage.
 
     Args:
-        two_factor: джерело 2FA-коду (за замовчуванням — консоль).
-        redactor: спільний маскувальник секретів (за замовчуванням створюється новий).
+        two_factor: source of 2FA codes (defaults to the console).
+        redactor: shared secret redactor (a new instance is created by default).
     """
     secret = settings.require_secret()
     redactor = redactor or Redactor()
     redactor.register(secret)
     configure_logging(settings.logging, logs_dir=settings.logs_dir, redactor=redactor)
 
-    # ── сховище ──
+    # ── Storage ──
     cipher = ScryptAesGcmCipher(secret)
     repository = FileAccountRepository(settings.accounts_dir, cipher)
     active_store = FileActiveAccountStore(settings.data_dir / "active_account")
 
-    # ── браузер і діагностика ──
+    # ── Browser and diagnostics ──
     diagnostics = DiagnosticsCollector(settings.diagnostics, settings.diagnostics_dir, redactor)
     pool = BrowserPool(settings.browser)
     sessions = BrowserSessionFactory(pool, settings.browser, diagnostics, redactor)
 
-    # ── адаптер AliExpress ──
+    # ── AliExpress adapter ──
     probe = SessionProbe(SELECTORS.login, settings.aliexpress)
     flow = PasswordLoginFlow(
         SELECTORS.login,
@@ -83,7 +83,7 @@ def build_api(
     manual_flow = ManualLoginFlow(SELECTORS.login, probe, settings.aliexpress)
     authenticator = AliExpressAuthenticator(sessions, flow, manual_flow, probe, settings.aliexpress)
 
-    # ── прикладні сервіси ──
+    # ── Application services ──
     profile_generator = BrowserForgeStealthProfileGenerator(
         settings.fingerprint,
         locale=settings.browser.locale,

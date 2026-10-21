@@ -1,8 +1,8 @@
-"""Визначення, що зараз показано на сторінці входу AliExpress.
+"""Detect the current AliExpress login page state.
 
-Сторінка ``/p/ug-login-page/login.html`` — це односторінковий застосунок із кількома екранами
-(підтверджено дампами, див. memory/07-login-flow.md). Замість «шукати поле й падати» ми
-розпізнаємо екран і діємо за ним.
+The ``/p/ug-login-page/login.html`` page is a single-page application with multiple states
+(see memory/07-login-flow.md). Detect the current state and act accordingly instead of failing
+when an expected field is not immediately present.
 """
 
 from __future__ import annotations
@@ -19,12 +19,12 @@ from aliweb.aliexpress.selectors import LoginSelectors
 
 
 class LoginScreen(StrEnum):
-    AUTHENTICATED = "authenticated"  # з'явилась НЕ сторінка входу: сайт перекинув (вже увійшли)
-    LANDING = "landing"  # «Register by passkey» — потрібно натиснути «Sign in with email/phone»
-    ACCOUNT_STEP = "account_step"  # видно лише поле логіну
-    PASSWORD_STEP = "password_step"  # видно поле пароля (логін може лишатись видимим)  # noqa: S105
-    CAPTCHA = "captcha"  # діалог слайдера (iframe baxia punish) або повна сторінка капчі
-    UNKNOWN = "unknown"  # ще вантажиться або незнайома верстка
+    AUTHENTICATED = "authenticated"  # The login page redirected; the account is already signed in.
+    LANDING = "landing"  # Click "Sign in with email/phone" on the "Register by passkey" screen.
+    ACCOUNT_STEP = "account_step"  # Only the login field is visible.
+    PASSWORD_STEP = "password_step"  # The password field is visible; the login may remain visible.  # noqa: S105
+    CAPTCHA = "captcha"  # Slider dialog (baxia punish iframe) or full captcha page.
+    UNKNOWN = "unknown"  # Page is loading or has an unknown layout.
 
 
 _ALL_ACTIONABLE = frozenset(
@@ -39,11 +39,11 @@ _ALL_ACTIONABLE = frozenset(
 
 
 def expected_screens_after(acted_on: LoginScreen) -> frozenset[LoginScreen]:
-    """Які екрани вважати «перехід відбувся» після дії на екрані ``acted_on``.
+    """Return the states that indicate a transition after an action on ``acted_on``.
 
-    Важливо НЕ включати сам ``acted_on``: одразу після кліку/відправки сторінка ще не змінилась, і
-    очікування «будь-якого дієвого екрана» повернулось би миттєво — дія повторилась би (напр.
-    логін набрався б удруге).
+    Do not include ``acted_on`` itself. Immediately after a click or submit, the page has not changed;
+    accepting the current state would return immediately and repeat the action (for example, typing
+    the login a second time).
     """
     match acted_on:
         case LoginScreen.LANDING:
@@ -57,7 +57,7 @@ def expected_screens_after(acted_on: LoginScreen) -> frozenset[LoginScreen]:
 
 
 async def is_visible(page: Page, selector: str) -> bool:
-    """Чи є видимий елемент за селектором (без очікування)."""
+    """Check whether an element matching the selector is visible without waiting."""
     try:
         return await page.locator(selector).first.is_visible()
     except Exception:
@@ -93,7 +93,7 @@ async def wait_for_screen(
     timeout_s: float,
     poll_s: float = 0.15,
 ) -> LoginScreen:
-    """Чекає, поки екран стане одним із ``accept``. Повертає останній виявлений (можливо UNKNOWN)."""
+    """Wait until the screen matches ``accept`` and return the last detected state."""
     deadline = time.monotonic() + timeout_s
     screen = await detect_screen(page, selectors)
     while screen not in accept and time.monotonic() < deadline:

@@ -28,7 +28,7 @@ class TestDetectScreen:
         assert await screen_of(FakePage("about:blank")) is LoginScreen.UNKNOWN
 
     async def test_redirect_away_means_authenticated(self) -> None:
-        """Сторінка входу перекинула авторизований акаунт на головну (дампи 014733/014840)."""
+        """The login page redirected an authenticated account to home (dumps 014733/014840)."""
         assert await screen_of(FakePage("https://www.aliexpress.com/")) is LoginScreen.AUTHENTICATED
 
     async def test_landing_register_by_passkey(self) -> None:
@@ -43,7 +43,7 @@ class TestDetectScreen:
 
     async def test_password_step_even_if_login_field_still_visible(self) -> None:
         page = FakePage(LOGIN)
-        page.visible_selectors = {SEL.username_input, SEL.password_input}  # так виглядає крок пароля
+        page.visible_selectors = {SEL.username_input, SEL.password_input}  # This is the password step.
         assert await screen_of(page) is LoginScreen.PASSWORD_STEP
 
     async def test_captcha_dialog_frame_wins(self) -> None:
@@ -57,7 +57,7 @@ class TestDetectScreen:
 
     async def test_main_frame_with_captcha_like_url_is_not_a_dialog(self) -> None:
         page = FakePage(LOGIN)
-        page.main_frame.url = CAPTCHA_FRAME  # лише НЕ-головні фрейми вважаються діалогом
+        page.main_frame.url = CAPTCHA_FRAME  # Only non-main frames count as the dialog.
         assert await screen_of(page) is LoginScreen.UNKNOWN
 
 
@@ -71,11 +71,11 @@ class TestWaitForScreen:
         )
 
     async def test_waits_for_client_side_redirect(self) -> None:
-        page = FakePage(LOGIN)  # спершу виглядає як сторінка входу…
+        page = FakePage(LOGIN)  # Initially appears to be the login page.
 
         async def redirect_later() -> None:
             await asyncio.sleep(0.05)
-            page.url = "https://www.aliexpress.com/"  # …і її скрипт перекидає на головну
+            page.url = "https://www.aliexpress.com/"  # Then a script redirects it to home.
 
         task = asyncio.create_task(redirect_later())
         screen = await wait_for_screen(
@@ -106,11 +106,11 @@ class TestWaitForScreen:
             SEL.password_input: "#fm-login-password",
             SEL.landing_email_button: 'button[aria-label="init"]',
         }
-        assert confirmed[selector] in selector  # ключові підтверджені дампами селектори на місці
+        assert confirmed[selector] in selector  # Key selectors confirmed by page dumps are present.
 
 
 class TestExpectedScreensAfter:
-    """Регресія: після відправки логіну чекати ІНШИЙ екран, інакше логін набереться двічі."""
+    """Regression: wait for a different screen after submission to avoid typing the login twice."""
 
     @pytest.mark.parametrize("acted_on", [LoginScreen.LANDING, LoginScreen.ACCOUNT_STEP, LoginScreen.CAPTCHA])
     def test_never_includes_the_screen_just_acted_on(self, acted_on: LoginScreen) -> None:

@@ -1,1 +1,1 @@
-"""Порти — Protocol-інтерфейси, які реалізують зовнішні шари (infrastructure, aliexpress)."""
+"""Ports are Protocol interfaces implemented by outer layers (infrastructure, aliexpress)."""

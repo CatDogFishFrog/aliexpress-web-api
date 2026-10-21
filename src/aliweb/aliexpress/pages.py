@@ -1,4 +1,4 @@
-"""Розпізнавання сторінок AliExpress за URL (чисті функції без браузера)."""
+"""Recognize AliExpress pages by URL using pure functions without a browser."""
 
 from __future__ import annotations
 
@@ -7,14 +7,14 @@ from urllib.parse import urlsplit
 
 _LOGIN_HOST_RE = re.compile(r"^(login|passport)\.", re.IGNORECASE)
 _LOGIN_PATH_RE = re.compile(r"login|sign-?in|passport", re.IGNORECASE)
-#: Антибот-сторінки: /punish, nocaptcha, /_____tmd_____/…
+#: Anti-bot pages: /punish, nocaptcha, /_____tmd_____/…
 CHALLENGE_URL_RE = re.compile(r"punish|captcha|_____tmd_____", re.IGNORECASE)
-#: URL iframe-діалогу капчі (baxia punish).
+#: Captcha dialog iframe URL (baxia punish).
 CAPTCHA_FRAME_RE = re.compile(r"_____tmd_____/punish", re.IGNORECASE)
 
 
 def looks_like_login_url(url: str) -> bool:
-    """Чи це сторінка входу. Дивимось лише на хост і шлях (query може містити що завгодно)."""
+    """Check whether this is a login page, using only the host and path (query may contain anything)."""
     parts = urlsplit(url)
     return bool(_LOGIN_HOST_RE.match(parts.hostname or "") or _LOGIN_PATH_RE.search(parts.path))
 

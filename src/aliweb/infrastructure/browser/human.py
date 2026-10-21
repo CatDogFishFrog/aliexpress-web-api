@@ -1,17 +1,16 @@
-"""Людиноподібна взаємодія зі сторінкою: набір тексту, рухи миші, скрол, кліки, перетягування.
+"""Human-like page interaction: typing, mouse movement, scrolling, clicks, and dragging.
 
-Принципи (вимога замовника): ніяких «ідеальних» миттєвих дій і ніяких неправдоподібно довгих пауз.
-  * Набір — символ за символом; інтервал між натисканнями ~100–200 мс з випадковим розкидом
-    (логнормальний), час утримання клавіші ~40–130 мс; зрідка коротке «замислення»; великі
-    літери/символи трохи повільніші. Жодна пауза не перевищує ~1,2 с.
-  * Миша — крива Безьє з випадковим вигином, нерівномірною швидкістю (прискорення/гальмування),
-    мікро-тремтінням і зрідка легким «перельотом» з корекцією; тривалість залежить від відстані.
-  * Клік — не в центр, а в випадкову точку всередині елемента; перед кліком коротка «затримка
-    наведення», кнопка утримується ~50–130 мс.
-  * Скрол — колесом кількома короткими поштовхами, а не стрибком.
+Principles: avoid perfectly instant actions and implausibly long pauses.
+    * Type one character at a time with variable intervals of about 100–200 ms and key holds of
+        about 40–130 ms. Occasionally pause briefly; uppercase and special characters take slightly longer.
+        No individual pause exceeds about 1.2 seconds.
+    * Move the mouse along a curved path with variable speed, small jitter, and occasional overshoot.
+        Duration depends on the distance.
+    * Click a random point inside the element, pause briefly before pressing, and hold for about 50–130 ms.
+    * Scroll with several short wheel events rather than one jump.
 
-Вся «випадковість» і очікування інжектуються (``rng``, ``sleep``): тести детерміновані й миттєві.
-Побудова траєкторій та затримок винесена в чисті функції — їх можна перевіряти без браузера.
+Randomness and waiting are injected (``rng``, ``sleep``), making tests deterministic and fast.
+Path and timing calculations are pure functions that can be tested without a browser.
 """
 
 from __future__ import annotations
@@ -33,12 +32,12 @@ _log = logging.getLogger(__name__)
 type Sleep = Callable[[float], Awaitable[None]]
 type Point = tuple[float, float]
 
-MAX_DELAY_S = 1.2  # жодна окрема пауза між діями не довша за це (до поділу на speed)
+MAX_DELAY_S = 1.2  # Maximum individual pause before applying the speed multiplier.
 
 
 @dataclass(frozen=True, slots=True)
 class KeyTiming:
-    """Один символ: скільки утримувати клавішу та скільки чекати ПЕРЕД натисканням (секунди)."""
+    """Timing for one character: key hold duration and wait before pressing, in seconds."""
 
     char: str
     wait_s: float
@@ -49,7 +48,7 @@ class KeyTiming:
 class MouseStep:
     x: float
     y: float
-    dt_s: float  # пауза після переміщення в цю точку
+    dt_s: float  # Pause after moving to this point.
 
 
 def _clip(value: float, low: float, high: float) -> float:
@@ -57,20 +56,20 @@ def _clip(value: float, low: float, high: float) -> float:
 
 
 def typing_timings(text: str, rng: random.Random, *, speed: float = 1.0) -> list[KeyTiming]:
-    """Затримки набору тексту. Типовий інтервал ≈ 0,12 с (≈ 70–80 слів/хв для швидкого друкаря)."""
+    """Typing delays. The typical interval is about 0.12 seconds (70–80 words per minute)."""
     timings: list[KeyTiming] = []
     previous = ""
     for index, char in enumerate(text):
         if index == 0:
-            wait = rng.uniform(0.15, 0.40)  # перед першим символом людина «налаштовується»
+            wait = rng.uniform(0.15, 0.40)  # A short pause before typing.
         else:
             wait = rng.lognormvariate(math.log(0.115), 0.38)
             if char.isupper() or not (char.isalnum() or char == " "):
-                wait += rng.uniform(0.04, 0.12)  # Shift / віддалені клавіші
+                wait += rng.uniform(0.04, 0.12)  # Shift or distant keys.
             if previous in "@._-":
                 wait += rng.uniform(0.02, 0.08)
             if rng.random() < 0.04:
-                wait += rng.uniform(0.18, 0.45)  # короткий «затик»
+                wait += rng.uniform(0.18, 0.45)  # Occasional hesitation.
         hold = _clip(rng.gauss(0.075, 0.02), 0.035, 0.14)
         timings.append(KeyTiming(char, _clip(wait, 0.04, MAX_DELAY_S) / speed, hold / speed))
         previous = char
@@ -80,18 +79,18 @@ def typing_timings(text: str, rng: random.Random, *, speed: float = 1.0) -> list
 def build_mouse_path(
     start: Point, end: Point, rng: random.Random, *, speed: float = 1.0, target_width: float = 40.0
 ) -> list[MouseStep]:
-    """Траєкторія миші від ``start`` до ``end`` (остання точка — рівно ``end``)."""
+    """Mouse path from ``start`` to ``end``; the last point is exactly ``end``."""
     distance = math.dist(start, end)
     if distance < 1.0:
         return [MouseStep(end[0], end[1], 0.0)]
 
-    # Закон Фітса: час руху росте з логарифмом відстані; обмежуємо, щоб не було ні миттєво, ні вічно.
+    # Fitts's law: movement time grows with the logarithm of the distance; clamp the extremes.
     duration = _clip(
         (0.16 + 0.13 * math.log2(distance / max(target_width, 8.0) + 1)) * rng.uniform(0.85, 1.2), 0.22, 1.1
     )
     duration /= speed
 
-    # Контрольні точки Безьє зі зсувом перпендикулярно напрямку руху (природний вигин).
+    # Offset Bezier control points perpendicular to the direction of travel.
     dx, dy = end[0] - start[0], end[1] - start[1]
     nx, ny = -dy / distance, dx / distance
     bend1 = rng.uniform(-0.18, 0.18) * distance
@@ -111,9 +110,9 @@ def build_mouse_path(
     weights: list[float] = []
     for i in range(1, count + 1):
         t = i / count
-        eased = t * t * (3 - 2 * t)  # smoothstep: повільний старт і гальмування наприкінці
+        eased = t * t * (3 - 2 * t)  # Smoothstep: slow start and finish.
         x, y = bezier(eased)
-        if i < count:  # мікро-тремтіння руки (не на останній точці)
+        if i < count:  # Add slight hand jitter, except at the final point.
             x += rng.gauss(0, 0.7)
             y += rng.gauss(0, 0.7)
         steps.append(MouseStep(x, y, 0.0))
@@ -122,7 +121,7 @@ def build_mouse_path(
     total = sum(weights)
     steps = [MouseStep(s.x, s.y, duration * w / total) for s, w in zip(steps, weights, strict=True)]
 
-    # На далеких рухах інколи легкий «переліт» і корекція назад до цілі.
+    # Occasionally overshoot and correct on long movements.
     if distance > 280 and rng.random() < 0.35:
         over = rng.uniform(4, 11)
         ox, oy = end[0] + dx / distance * over, end[1] + dy / distance * over
@@ -134,7 +133,7 @@ def build_mouse_path(
 
 
 class HumanInput:
-    """Людиноподібне керування сторінкою. Один екземпляр на сторінку (пам'ятає позицію миші)."""
+    """Human-like page interaction. Use one instance per page to retain the mouse position."""
 
     def __init__(
         self,
@@ -146,7 +145,7 @@ class HumanInput:
     ) -> None:
         self._page = page
         self._settings = settings
-        self._rng = rng or random.Random()  # noqa: S311 — не криптографія
+        self._rng = rng or random.Random()  # noqa: S311 — not used for cryptography.
         self._sleep = sleep
         self._pos: Point | None = None
 
@@ -159,11 +158,11 @@ class HumanInput:
         return self._settings.speed
 
     async def pause(self, low_s: float, high_s: float) -> None:
-        """Випадкова пауза «реакції». Нічого не робить, якщо людяність вимкнено."""
+        """Wait for a random reaction delay; do nothing if human-like interaction is disabled."""
         if self.enabled:
             await self._sleep(_clip(self._rng.uniform(low_s, high_s), 0, MAX_DELAY_S) / self._speed)
 
-    # ── миша ───────────────────────────────────────────────────────────────
+    # ── Mouse ───────────────────────────────────────────────────────────────
     def _viewport(self) -> tuple[float, float]:
         size = self._page.viewport_size
         return (float(size["width"]), float(size["height"])) if size else (1280.0, 720.0)
@@ -187,7 +186,7 @@ class HumanInput:
         self._pos = (x, y)
 
     async def settle(self) -> None:
-        """Після завантаження сторінки: коротка пауза, легкий рух миші, інколи невеликий скрол."""
+        """After page load, pause briefly, move the mouse, and occasionally scroll a little."""
         if not self.enabled:
             return
         await self.pause(0.25, 0.7)
@@ -196,9 +195,9 @@ class HumanInput:
         if self._rng.random() < 0.35:
             await self.idle_scroll()
 
-    # ── скрол ──────────────────────────────────────────────────────────────
+    # ── Scrolling ──────────────────────────────────────────────────────────
     async def scroll(self, delta_y: float) -> None:
-        """Скрол колесом кількома короткими поштовхами (``delta_y`` > 0 — вниз)."""
+        """Scroll with several short wheel events (``delta_y`` > 0 means down)."""
         if not self.enabled:
             await self._page.mouse.wheel(0, delta_y)
             return
@@ -211,7 +210,7 @@ class HumanInput:
         await self.pause(0.12, 0.3)
 
     async def idle_scroll(self) -> None:
-        """Легке «оглядове» прокручування вниз-вгору, якщо сторінка взагалі прокручується."""
+        """Briefly scroll down and up if the page is scrollable."""
         with contextlib.suppress(Exception):
             overflow = await self._page.evaluate(
                 "() => document.documentElement.scrollHeight - window.innerHeight"
@@ -223,7 +222,7 @@ class HumanInput:
                 await self.scroll(-amount)
 
     async def _ensure_visible(self, element: ElementHandle) -> None:
-        """Якщо елемент поза видимою областю — прокручуємо колесом, як людина."""
+        """Scroll the element into view using wheel events if it is outside the viewport."""
         _, height = self._viewport()
         for _ in range(5):
             box = await element.bounding_box()
@@ -237,9 +236,9 @@ class HumanInput:
         with contextlib.suppress(Exception):
             await element.scroll_into_view_if_needed()
 
-    # ── клік ───────────────────────────────────────────────────────────────
+    # ── Clicking ───────────────────────────────────────────────────────────
     def _point_inside(self, box: FloatRect) -> Point:
-        """Випадкова точка всередині елемента (гауссово навколо центру, не ближче 3px до краю)."""
+        """Choose a random point inside the element, near its center and at least 3px from the edge."""
 
         def pick(origin: float, size: float) -> float:
             margin = min(3.0, size / 4)
@@ -249,36 +248,36 @@ class HumanInput:
         return pick(box["x"], box["width"]), pick(box["y"], box["height"])
 
     async def click(self, element: ElementHandle) -> None:
-        """Людиноподібний клік по елементу. Без людяності — звичайний ``element.click()``."""
+        """Click an element with human-like input, or use ``element.click()`` when disabled."""
         if not self.enabled:
             await element.click()
             return
         await self._ensure_visible(element)
         box = await element.bounding_box()
         if box is None:
-            await element.click()  # елемент зник/без геометрії — запасний варіант
+            await element.click()  # Fallback if the element disappeared or has no bounding box.
             return
         x, y = self._point_inside(box)
         await self.move_to(x, y, target_width=box["width"])
-        await self.pause(0.06, 0.18)  # «наведення» перед натисканням
+        await self.pause(0.06, 0.18)  # Brief hover before pressing.
         await self._page.mouse.down()
         await self._sleep(_clip(self._rng.gauss(0.085, 0.025), 0.045, 0.16) / self._speed)
         await self._page.mouse.up()
         await self.pause(0.08, 0.25)
 
-    # ── набір тексту ───────────────────────────────────────────────────────
+    # ── Typing ─────────────────────────────────────────────────────────────
     async def type_text(self, text: str) -> None:
-        """Набирає текст у сфокусований елемент символ за символом."""
+        """Type text into the focused element one character at a time."""
         if not self.enabled:
             await self._page.keyboard.type(text)
             return
         for timing in typing_timings(text, self._rng, speed=self._speed):
             await self._sleep(timing.wait_s)
-            # delay у Playwright — це час утримання клавіші між keydown і keyup
+            # Playwright delay is the key hold duration between keydown and keyup.
             await self._page.keyboard.type(timing.char, delay=timing.hold_s * 1000)
 
     async def fill(self, element: ElementHandle, text: str) -> None:
-        """Клік у поле і людський набір. Без людяності — миттєвий ``element.fill``."""
+        """Click the field and type naturally, or use ``element.fill`` when disabled."""
         if not self.enabled:
             await element.fill(text)
             return
@@ -290,12 +289,12 @@ class HumanInput:
         await self.pause(0.15, 0.45)
         await self._page.keyboard.press("Enter", delay=self._rng.uniform(40, 110))
 
-    # ── перетягування (слайдер) ────────────────────────────────────────────
+    # ── Dragging (slider) ──────────────────────────────────────────────────
     async def drag_horizontally(self, handle_center: Point, distance: float) -> None:
-        """Тягне елемент із центру ``handle_center`` вправо на ``distance`` px.
+        """Drag an element right from ``handle_center`` by ``distance`` pixels.
 
-        Профіль швидкості нерівний: повільний «захват», розгін, уповільнення біля кінця,
-        легке вертикальне хитання. Загалом ~0,7–1,5 с.
+        Use variable speed: a slow pickup, acceleration, deceleration near the end, and slight
+        vertical wobble. The movement takes about 0.7–1.5 seconds.
         """
         await self.move_to(*handle_center)
         await self.pause(0.12, 0.35)
@@ -315,7 +314,7 @@ class HumanInput:
         wobble = self._rng.uniform(1.0, 2.5)
         for i in range(1, steps + 1):
             t = i / steps
-            eased = 1 - (1 - t) ** 2.2 if t > 0.5 else 2 * t * t  # розгін, потім гальмування
+            eased = 1 - (1 - t) ** 2.2 if t > 0.5 else 2 * t * t  # Accelerate, then decelerate.
             x = sx + distance * eased
             y = sy + math.sin(t * math.pi * 2) * wobble + self._rng.gauss(0, 0.4)
             await self._page.mouse.move(x, y)

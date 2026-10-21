@@ -1,10 +1,10 @@
-"""Чиста логіка рішень після відправки пароля: що робити далі (успіх / капча / чекати / здатися).
+"""Pure decision logic for the login flow after password submission.
 
-Винесена окремо, бо саме тут була помилка: відповідь ``loginByPwd`` з RGV587 вважалась
-КІНЦЕВОЮ відмовою, хоча насправді це тригер слайдера (iframe baxia punish), який
-завантажується ~3 с і після проходження сторінка САМА повторює запит входу.
+This logic is isolated because an earlier implementation treated RGV587 from ``loginByPwd`` as a
+final rejection. It actually triggers a slider (baxia punish iframe) that loads after about three
+seconds; after it is solved, the page retries the login request automatically.
 
-Функція :func:`decide` не торкається браузера — її повністю покривають юніт-тести.
+The :func:`decide` function does not access the browser and is fully covered by unit tests.
 """
 
 from __future__ import annotations
@@ -20,28 +20,28 @@ class Decision(StrEnum):
     SUCCESS = "success"
     SOLVE_CAPTCHA = "solve_captcha"
     HANDLE_TWO_FACTOR = "handle_two_factor"
-    RESUBMIT = "resubmit"  # після слайдера нового запиту входу немає — натиснути «Sign in» ще раз
+    RESUBMIT = "resubmit"  # No new login request after the slider; click "Sign in" again.
     WAIT = "wait"
-    FAIL_RISK = "fail_risk"  # відмова ризик-контролю без діалогу капчі
-    FAIL_CAPTCHA = "fail_captcha"  # слайдер не вдалося пройти за відведену кількість спроб
+    FAIL_RISK = "fail_risk"  # Risk-control rejection without a captcha dialog.
+    FAIL_CAPTCHA = "fail_captcha"  # Slider could not be solved within the allowed attempts.
 
 
 @dataclass(frozen=True, slots=True)
 class OutcomeConfig:
-    risk_grace_s: float = 8.0  # скільки чекати появи діалогу капчі після RGV587
+    risk_grace_s: float = 8.0  # How long to wait for a captcha dialog after RGV587.
     max_captcha_attempts: int = 3
-    retry_after_solve_s: float = 10.0  # скільки чекати нового запиту після слайдера
+    retry_after_solve_s: float = 10.0  # How long to wait for a new request after solving the slider.
     max_resubmits: int = 1
 
 
 @dataclass(frozen=True, slots=True)
 class Snapshot:
-    """Знімок спостережуваного стану в момент ``now`` (секунди, монотонний годинник)."""
+    """Snapshot of the observed state at ``now`` (seconds from a monotonic clock)."""
 
     now: float
     screen: LoginScreen
-    verdict: LoginVerdict | None  # остання відповідь loginByPwd (None — ще не було)
-    verdict_seq: int  # лічильник відповідей loginByPwd
+    verdict: LoginVerdict | None  # Latest loginByPwd response, if any.
+    verdict_seq: int  # Number of loginByPwd responses received.
     has_ticket: bool = False
     xman_rotated: bool = False
     two_factor_visible: bool = False
@@ -49,7 +49,7 @@ class Snapshot:
 
 @dataclass(slots=True)
 class OutcomeState:
-    """Накопичений стан одного входу (змінюється самим :func:`decide` і виконавцем дій)."""
+    """Accumulated state for one login attempt, updated by :func:`decide` and the action runner."""
 
     risk_first_seen: float | None = None
     captcha_attempts: int = 0
@@ -68,7 +68,7 @@ def decide(snapshot: Snapshot, state: OutcomeState, config: OutcomeConfig = Outc
     verdict = snapshot.verdict
     risk_active = bool(verdict and verdict.risk)
 
-    # 1. Успіх — лише коли актуальна відповідь не є відмовою (стара відмова + старі cookie — не успіх).
+    # 1. Succeed only if the current response is not a rejection; old cookies cannot override one.
     if not risk_active and (
         snapshot.screen is LoginScreen.AUTHENTICATED
         or decide_login_success(
@@ -79,32 +79,32 @@ def decide(snapshot: Snapshot, state: OutcomeState, config: OutcomeConfig = Outc
     ):
         return Decision.SUCCESS
 
-    # 2. Діалог капчі видно — вирішуємо її (RGV587 тут — це саме її тригер, а не вирок).
+    # 2. Solve a visible captcha dialog; RGV587 is its trigger, not a final rejection.
     if snapshot.screen is LoginScreen.CAPTCHA:
         if state.captcha_attempts >= config.max_captcha_attempts:
             return Decision.FAIL_CAPTCHA
         return Decision.SOLVE_CAPTCHA
 
-    # 3. Відмова ризик-контролю, але діалогу немає.
+    # 3. Risk-control rejection without a visible dialog.
     if risk_active:
         if state.risk_first_seen is None:
             state.risk_first_seen = snapshot.now
         if state.captcha_attempts == 0:
-            # Діалог завантажується ~3 с: даємо йому з'явитись, і лише потім здаємось.
+            # The dialog takes about three seconds to load; wait before giving up.
             if snapshot.now - state.risk_first_seen > config.risk_grace_s:
                 return Decision.FAIL_RISK
             return Decision.WAIT
-        # Слайдер уже проходили: чекаємо, що сторінка сама повторить вхід (нова відповідь).
+        # The slider was solved; wait for the page to retry login (a new response).
         assert state.solved_at is not None
         if snapshot.verdict_seq > state.seq_at_solve:
-            return Decision.WAIT  # прийшла нова відповідь — оцінимо її на наступній ітерації
+            return Decision.WAIT  # Evaluate the new response on the next iteration.
         if snapshot.now - state.solved_at > config.retry_after_solve_s:
             if state.resubmits < config.max_resubmits:
                 return Decision.RESUBMIT
             return Decision.FAIL_RISK
         return Decision.WAIT
 
-    # 4. Двофакторне підтвердження.
+    # 4. Two-factor authentication.
     if snapshot.two_factor_visible and not state.two_factor_done:
         return Decision.HANDLE_TWO_FACTOR
     return Decision.WAIT

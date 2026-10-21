@@ -27,10 +27,10 @@ class TestTypingTimings:
     @pytest.mark.parametrize("seed", range(40))
     def test_delays_are_human_not_instant_not_glacial(self, seed: int) -> None:
         timings = typing_timings(EMAIL, random.Random(seed))
-        assert all(0.04 <= t.wait_s <= MAX_DELAY_S for t in timings)  # жодної паузи довше ~1,2 с
+        assert all(0.04 <= t.wait_s <= MAX_DELAY_S for t in timings)  # No pause exceeds about 1.2 seconds.
         assert all(0.035 <= t.hold_s <= 0.14 for t in timings)
         total = sum(t.wait_s + t.hold_s for t in timings)
-        assert 2.0 < total < 9.0  # 33 символи: ~3–6 с, а не миттєво й не хвилину
+        assert 2.0 < total < 9.0  # 33 characters take about 3–6 seconds, not instantly or a minute.
 
     def test_delays_are_irregular(self) -> None:
         waits = [t.wait_s for t in typing_timings(EMAIL, random.Random(7))[1:]]
@@ -118,11 +118,11 @@ class TestHumanInput:
 
     async def test_offscreen_element_is_scrolled_into_view_with_wheel(self) -> None:
         page = FakePage()
-        el = FakeElement(page, 800, 1500, 200, 48)  # нижче видимої області (768)
+        el = FakeElement(page, 800, 1500, 200, 48)  # Below the viewport (768px).
         h, _ = human(page)
         await h.click(cast(Any, el))
         assert page.mouse.wheels and sum(page.mouse.wheels) > 500
-        assert len(page.mouse.wheels) >= 3  # кількома поштовхами, а не одним стрибком
+        assert len(page.mouse.wheels) >= 3  # Several wheel events rather than one jump.
         _, y = page.mouse.moves[-1]
         assert 0 < y < 768
 
@@ -132,7 +132,7 @@ class TestHumanInput:
         h, _ = human(page)
         await h.fill(cast(Any, el), "abc")
         assert page.mouse.downs == 1 and "".join(c for c, _ in page.keyboard.typed) == "abc"
-        assert el.filled == []  # не «миттєвий» fill
+        assert el.filled == []  # Avoid an instant fill.
 
     async def test_disabled_mode_is_instant_and_plain(self) -> None:
         page = FakePage()
@@ -162,7 +162,7 @@ class TestHumanInput:
         page = FakePage()
         h, _ = human(page, seed=3)
         await h.settle()
-        assert page.mouse.moves  # мишка ворухнулась
+        assert page.mouse.moves  # Mouse moved.
 
     async def test_idle_scroll_skipped_when_page_does_not_scroll(self) -> None:
         page = FakePage()

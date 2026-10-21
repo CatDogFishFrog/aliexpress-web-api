@@ -1,4 +1,4 @@
-"""Експорт та імпорт акаунтів/сесій у зашифровані bin-пакети (на рівні байтів)."""
+"""Export and import accounts and sessions as encrypted binary bundles."""
 
 from __future__ import annotations
 
@@ -18,15 +18,15 @@ from aliweb.domain.errors import (
 )
 from aliweb.domain.secret import Secret
 
-#: AAD, що прив'язує шифротекст до призначення (захист від підміни типу файлу).
+#: AAD binds ciphertext to its purpose, preventing file type substitution.
 BUNDLE_AAD = b"aliweb.bundle.v1"
 
 
 class SessionTransferService:
-    """Створює переносимі bin-пакети та імпортує їх назад.
+    """Create portable binary bundles and import them back.
 
-    Пакет — це той самий формат акаунта, зашифрований ключем із ``.env`` або окремою
-    парольною фразою (``passphrase``) — зручно, коли пакет їде на інший хост.
+    A bundle uses the account format, encrypted with the key from ``.env`` or a separate
+    passphrase, which is useful when transferring it to another host.
     """
 
     def __init__(
@@ -55,14 +55,14 @@ class SessionTransferService:
         include_fingerprint: bool = True,
         passphrase: Secret | None = None,
     ) -> bytes:
-        """Зашифрований пакет акаунта.
+        """Return an encrypted account bundle.
 
-        За замовчуванням: сесія + відбиток браузера (щоб сесія й далі працювала в тому самому
-        середовищі), але БЕЗ логіну/пароля. ``include_fingerprint=False`` прибирає відбиток.
+        By default, include the session and browser profile but not the login or password.
+        ``include_fingerprint=False`` omits the profile.
         """
         account = await self._repo.get(account_id)
         if account is None:
-            raise AccountNotFoundError(f"Акаунт {account_id} не знайдено")
+            raise AccountNotFoundError(f"Account {account_id} was not found")
         plaintext = encode_account(
             account,
             include_credentials=include_credentials,
@@ -78,19 +78,19 @@ class SessionTransferService:
         overwrite: bool = False,
         passphrase: Secret | None = None,
     ) -> Account:
-        """Імпортує пакет. ``as_id`` перевизначає ідентифікатор із пакета.
+        """Import a bundle. ``as_id`` overrides the identifier in the bundle.
 
-        Відбиток браузера: береться з пакета; якщо його там немає — зберігається відбиток уже існуючого
-        акаунта (при ``overwrite``); якщо немає ніякого — створюється новий.
+        Use the profile from the bundle. If absent, preserve the existing account profile when
+        overwriting; otherwise create a new profile if needed.
         """
         incoming = decode_account(self._cipher(passphrase).decrypt(blob, aad=BUNDLE_AAD))
         if incoming.session is None and incoming.credentials is None:
-            raise EmptyBundleError("Пакет не містить ні сесії, ні облікових даних")
+            raise EmptyBundleError("Bundle contains neither a session nor credentials")
 
         target = as_id or incoming.id
         existing = await self._repo.get(target)
         if existing is not None and not overwrite:
-            raise AccountAlreadyExistsError(f"Акаунт {target} уже існує (використайте overwrite для заміни)")
+            raise AccountAlreadyExistsError(f"Account {target} already exists (use overwrite to replace it)")
 
         profile = incoming.profile or (existing.profile if existing else None)
         if profile is None:
@@ -102,7 +102,7 @@ class SessionTransferService:
             id=target,
             created_at=existing.created_at if existing else now,
             updated_at=now,
-            # Пакет без пароля не має стирати збережений пароль існуючого акаунта.
+            # A bundle without credentials must not erase existing saved credentials.
             credentials=incoming.credentials or (existing.credentials if existing else None),
             profile=profile,
         )

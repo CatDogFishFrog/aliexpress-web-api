@@ -1,22 +1,22 @@
-"""Шифрування scrypt + AES-256-GCM у власному контейнері.
+"""scrypt and AES-256-GCM encryption in a custom container.
 
-Формат blob (усі числа — big-endian, але тут лише байти):
+Blob format (all values below are byte offsets and lengths):
 
-    offset  len  поле
+    offset  len  field
     0       4    MAGIC  = b"ALWB"
     4       1    FORMAT_VERSION (=1)
-    5       1    log2(N)       параметр scrypt
-    6       1    r             параметр scrypt
-    7       1    p             параметр scrypt
-    8       16   salt          випадковий, окремий для КОЖНОГО шифрування
-    24      12   nonce         випадковий
+    5       1    log2(N)       scrypt parameter
+    6       1    r             scrypt parameter
+    7       1    p             scrypt parameter
+    8       16   salt          random, unique for each encryption
+    24      12   nonce         random
     36      …    ciphertext || GCM-tag(16)
 
-AAD для GCM = заголовок (байти 0..36) + AAD виклику. Тому підміна параметрів scrypt чи
-версії, а також перенесення шифротексту в «чужий» контекст, виявляються автентифікацією.
+GCM AAD is the header (bytes 0..36) plus the call-specific AAD. Authentication detects tampering
+with scrypt parameters or version, and ciphertext moved to an unrelated context.
 
-Параметри scrypt читаються з недовіреного файлу, тому на розшифруванні жорстко обмежені
-(захист від DoS через гігантський N).
+scrypt parameters come from an untrusted file, so decryption enforces strict limits to prevent
+denial-of-service attacks using an excessively large N.
 """
 
 from __future__ import annotations
@@ -39,13 +39,13 @@ _HEADER_LEN = 4 + 1 + 3 + _SALT_LEN + _NONCE_LEN  # 36
 _TAG_LEN = 16
 MIN_SECRET_LENGTH = 16
 
-# Верхня межа пам'яті scrypt (≈128·N·r байт) при розшифруванні недовіреного файлу.
+# Maximum scrypt memory (approximately 128*N*r bytes) when decrypting an untrusted file.
 _MAX_SCRYPT_MEMORY = 256 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
 class ScryptParams:
-    log2_n: int = 15  # N = 32768 → ≈32 MiB при r=8
+    log2_n: int = 15  # N = 32768, approximately 32 MiB at r=8.
     r: int = 8
     p: int = 1
 
@@ -59,20 +59,20 @@ class ScryptParams:
 
     def validate_untrusted(self) -> None:
         if not (12 <= self.log2_n <= 20 and 1 <= self.r <= 16 and 1 <= self.p <= 4):
-            raise DecryptionError("Параметри scrypt у файлі поза допустимими межами")
+            raise DecryptionError("scrypt parameters in the file are out of range")
         if self.memory_bytes > _MAX_SCRYPT_MEMORY:
-            raise DecryptionError("Параметри scrypt у файлі вимагають надто багато пам'яті")
+            raise DecryptionError("scrypt parameters in the file require too much memory")
 
 
 class ScryptAesGcmCipher:
-    """Реалізація порту ``Cipher``. Ключ виводиться з секрету окремо для кожного blob."""
+    """Implement the ``Cipher`` port. Derive a separate key from the secret for each blob."""
 
     def __init__(self, secret: Secret, params: ScryptParams | None = None) -> None:
         if len(secret) < MIN_SECRET_LENGTH:
-            raise ConfigurationError(f"Ключ шифрування має містити щонайменше {MIN_SECRET_LENGTH} символів")
+            raise ConfigurationError(f"Encryption key must contain at least {MIN_SECRET_LENGTH} characters")
         self._secret = secret
         self._params = params or ScryptParams()
-        self._params.validate_untrusted()  # власні параметри теж мусять бути в межах
+        self._params.validate_untrusted()  # Validate locally configured parameters as well.
 
     def _derive_key(self, salt: bytes, params: ScryptParams) -> bytes:
         return hashlib.scrypt(
@@ -95,10 +95,10 @@ class ScryptAesGcmCipher:
 
     def decrypt(self, blob: bytes, *, aad: bytes = b"") -> bytes:
         if len(blob) < _HEADER_LEN + _TAG_LEN or blob[:4] != MAGIC:
-            raise DecryptionError("Це не зашифрований файл aliweb (хибний заголовок)")
+            raise DecryptionError("Not an encrypted aliweb file (invalid header)")
         version, log2_n, r, p = blob[4], blob[5], blob[6], blob[7]
         if version != FORMAT_VERSION:
-            raise DecryptionError(f"Непідтримувана версія контейнера: {version}")
+            raise DecryptionError(f"Unsupported container version: {version}")
         params = ScryptParams(log2_n=log2_n, r=r, p=p)
         params.validate_untrusted()
 
@@ -109,11 +109,11 @@ class ScryptAesGcmCipher:
             key = self._derive_key(salt, params)
             return AESGCM(key).decrypt(nonce, blob[_HEADER_LEN:], header + aad)
         except InvalidTag as exc:
-            raise DecryptionError("Не вдалося розшифрувати: хибний ключ або файл пошкоджено") from exc
+            raise DecryptionError("Decryption failed: incorrect key or corrupted file") from exc
         except (ValueError, MemoryError) as exc:
-            raise CryptoError(f"Помилка виведення ключа: {exc}") from exc
+            raise CryptoError(f"Key derivation failed: {exc}") from exc
 
 
 def make_cipher(secret: Secret) -> ScryptAesGcmCipher:
-    """Фабрика, що відповідає порту ``CipherFactory``."""
+    """Factory implementation for the ``CipherFactory`` port."""
     return ScryptAesGcmCipher(secret)

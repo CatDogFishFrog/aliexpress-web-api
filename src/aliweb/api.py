@@ -1,4 +1,4 @@
-"""Публічний фасад бібліотеки: єдина точка входу для споживача."""
+"""Public library facade and single entry point for consumers."""
 
 from __future__ import annotations
 
@@ -16,9 +16,9 @@ from aliweb.application.transfer import SessionTransferService
 
 @dataclass(frozen=True, slots=True)
 class AliExpressWebApi:
-    """Зібраний граф сервісів. Створюється через :func:`aliweb.bootstrap.build_api`.
+    """Service graph created by :func:`aliweb.bootstrap.build_api`.
 
-    Використання::
+    Usage::
 
         async with build_api(Settings.from_env()) as api:
             await api.accounts.add(AccountId.parse("main"), Credentials(...))
@@ -35,7 +35,7 @@ class AliExpressWebApi:
     _close: Callable[[], Awaitable[None]]
 
     async def aclose(self) -> None:
-        """Закриває браузери. Безпечно викликати повторно."""
+        """Close browsers. Safe to call more than once."""
         await self._close()
 
     async def __aenter__(self) -> Self:

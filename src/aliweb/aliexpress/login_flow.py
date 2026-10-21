@@ -1,15 +1,15 @@
-"""Автоматичний потік входу за логіном і паролем.
+"""Automated login flow using a username and password.
 
-Основа — ali-coins (libs/ui/login.js), але переписано за результатами аналізу дампів реальної
-сторінки входу (див. memory/07-login-flow.md). Сторінка — односторінковий застосунок із екранами:
+Based on ali-coins (libs/ui/login.js), rewritten after analyzing real login page dumps (see
+memory/07-login-flow.md). The page is a single-page application with these states:
 
-  * AUTHENTICATED — сторінка входу сама перекинула геть (акаунт уже увійшов);
-  * LANDING       — «Register by passkey»: поля немає, треба натиснути «Sign in with email/phone»;
-  * ACCOUNT_STEP  — поле логіну;
-  * PASSWORD_STEP — поле пароля (логін лишається видимим);
-  * CAPTCHA       — діалог слайдера (iframe baxia punish), що з'являється ПІСЛЯ відповіді RGV587.
+    * AUTHENTICATED — the login page redirected away; the account is already signed in;
+    * LANDING       — "Register by passkey"; click "Sign in with email/phone" to continue;
+    * ACCOUNT_STEP  — login field;
+    * PASSWORD_STEP — password field (login remains visible);
+    * CAPTCHA       — slider dialog (baxia punish iframe) shown after an RGV587 response.
 
-Усі дії виконуються людиноподібно (``HumanInput``): набір по символах, рух миші, натискання.
+All actions use ``HumanInput``: character-by-character typing, mouse movement, and clicks.
 """
 
 from __future__ import annotations
@@ -69,7 +69,7 @@ _MAX_NAVIGATION_STEPS = 6
 
 
 class LoginResponseCapture:
-    """Перехоплює JSON-відповіді ендпоінта loginByPwd. Веде лічильник ``seq`` і останній вердикт."""
+    """Capture JSON responses from loginByPwd and track the response sequence and latest verdict."""
 
     def __init__(self, page: Page) -> None:
         self._page = page
@@ -89,7 +89,7 @@ class LoginResponseCapture:
                 self._latest = body
                 self.seq += 1
         except Exception:
-            _log.debug("Відповідь loginByPwd нечитабельна", exc_info=True)
+            _log.debug("Could not read loginByPwd response", exc_info=True)
 
     def verdict(self) -> LoginVerdict | None:
         return None if self._latest is None else classify_login_ret(extract_ret(self._latest))
@@ -120,31 +120,31 @@ class PasswordLoginFlow:
         self._outcome = outcome_config or OutcomeConfig()
 
     async def run(self, session: BrowserSession, credentials: Credentials) -> bool:
-        """Виконує вхід у відкритій сесії.
+        """Log in using an open browser session.
 
         Returns:
-            ``True`` — сайт одразу визнав акаунт увійшовшим (вхід не виконувався).
+            ``True`` if the site immediately recognized the account as authenticated.
 
         Raises:
-            PageStructureError: не вдалося розпізнати екран / знайти елементи.
-            RiskControlError: відхилено ризик-контролем і слайдер не з'явився.
-            CaptchaChallengeError: слайдер не пройдено або вхід не підтверджено.
-            TwoFactorRequiredError: потрібен 2FA без можливості ввести код.
-            BrowserClosedError: вікно закрито під час входу.
+            PageStructureError: a page state or element could not be recognized.
+            RiskControlError: risk control rejected login and no slider appeared.
+            CaptchaChallengeError: the slider was not solved or login was not confirmed.
+            TwoFactorRequiredError: 2FA is required but a code cannot be entered.
+            BrowserClosedError: the browser window closed during login.
         """
-        # Пароль і логін потрапляють на сторінку, а отже й у дампи — реєструємо для маскування.
+        # Credentials appear on the page and in dumps, so register them for redaction.
         self._redactor.register(credentials.password)
         self._redactor.register(credentials.login)
 
         page = session.page
         human = HumanInput(page, self._human_settings)
-        _log.info("Вхід в акаунт", extra={"login": credentials.masked_login})
+        _log.info("Logging in to account", extra={"login": credentials.masked_login})
         await page.goto(self._settings.login_url, wait_until="domcontentloaded")
         await session.checkpoint("login_page_opened")
 
         screen = await wait_for_screen(page, self._sel, accept=_ACTIONABLE, timeout_s=15)
         if screen is LoginScreen.AUTHENTICATED:
-            _log.info("Акаунт уже авторизований (сторінка входу перекинула на головну)")
+            _log.info("Account is already authenticated (login page redirected to home)")
             return True
         await human.settle()
 
@@ -160,10 +160,10 @@ class PasswordLoginFlow:
         finally:
             capture.detach()
         await session.checkpoint("login_succeeded")
-        _log.info("Вхід успішний", extra={"login": credentials.masked_login})
+        _log.info("Login successful", extra={"login": credentials.masked_login})
         return False
 
-    # ── навігація екранами до кроку пароля ─────────────────────────────────
+    # ── Navigate to the password step ─────────────────────────────────────
     async def _advance_to_password(
         self,
         session: BrowserSession,
@@ -187,38 +187,38 @@ class PasswordLoginFlow:
                 await session.checkpoint("after_account_submit")
             else:
                 raise PageStructureError(
-                    "Сторінка входу не розпізнана: немає ні стартового екрана, ні поля логіну/пароля. "
-                    "Можливо, змінилась верстка — див. діагностичний дамп."
+                    "Unrecognized login page: no landing screen or login/password fields found. "
+                    "The site layout may have changed; see the diagnostic dump."
                 )
-            # Чекаємо ІНШИЙ екран, ніж той, на якому щойно діяли (див. expected_screens_after);
-            # якщо за таймаут нічого не змінилось — наступна ітерація повторить/спробує запасний шлях.
+            # Wait for a different state than the one just acted on (see expected_screens_after).
+            # If it does not change before timeout, the next iteration retries or uses a fallback.
             screen = await wait_for_screen(
                 page, self._sel, accept=expected_screens_after(screen), timeout_s=8
             )
         raise PageStructureError(
-            f"Не вдалося дійти до кроку пароля за {_MAX_NAVIGATION_STEPS} кроків "
-            f"(останній екран: {screen.value})"
+            f"Could not reach the password step in {_MAX_NAVIGATION_STEPS} steps "
+            f"(last state: {screen.value})"
         )
 
     async def _leave_landing(self, page: Page, human: HumanInput, *, attempt: int) -> None:
-        """Стартовий екран «Register by passkey»: тиснемо «Sign in with email/phone»."""
+        """On the "Register by passkey" landing screen, click "Sign in with email/phone"."""
         if attempt > 2:
             raise PageStructureError(
-                "Після кліку по «Sign in with email/phone» форма входу не з'явилась — змінилась верстка?"
+                'Login form did not appear after clicking "Sign in with email/phone"; did the layout change?'
             )
         selector = (
             self._sel.landing_email_button if attempt == 1 else self._sel.landing_existing_account_button
         )
         button = await page.query_selector(selector)
         if button is None or not await button.is_visible():
-            raise PageStructureError(f"Кнопку стартового екрана не знайдено: {selector}")
+            raise PageStructureError(f"Landing screen button not found: {selector}")
         await human.click(button)
 
     async def _submit_account(self, page: Page, human: HumanInput, login: str) -> None:
         field = await page.query_selector(self._sel.username_input)
         if field is None:
-            raise PageStructureError("Поле логіну зникло з сторінки")
-        if await field.input_value() != login:  # повторна ітерація не має набирати логін двічі
+            raise PageStructureError("Login field disappeared from the page")
+        if await field.input_value() != login:  # Do not type the login twice on a retry.
             await human.fill(field, login)
         await human.pause(0.25, 0.6)
         button = await self._visible(page, self._sel.continue_button)
@@ -227,14 +227,14 @@ class PasswordLoginFlow:
         else:
             await human.press_enter()
 
-    # ── пароль та очікування результату ────────────────────────────────────
+    # ── Password submission and outcome ───────────────────────────────────
     async def _submit_password(
         self, session: BrowserSession, human: HumanInput, credentials: Credentials
     ) -> None:
         page = session.page
         field = await page.query_selector(self._sel.password_input)
         if field is None:
-            raise PageStructureError("Поле пароля зникло з сторінки")
+            raise PageStructureError("Password field disappeared from the page")
         await human.fill(field, credentials.password.reveal())
         await human.pause(0.3, 0.8)
         await session.checkpoint("before_password_submit")
@@ -262,11 +262,11 @@ class PasswordLoginFlow:
         deadline = time.monotonic() + _OVERALL_TIMEOUT_S
         while True:
             if page.is_closed():
-                raise BrowserClosedError("Вікно браузера закрито під час входу")
+                raise BrowserClosedError("Browser window closed during login")
             now = time.monotonic()
             if now > deadline:
                 raise CaptchaChallengeError(
-                    "Вхід не підтверджено за відведений час. Спробуйте ручний вхід: "
+                    "Login was not confirmed before the timeout. Try manual login: "
                     "`aliweb login <id> --headful --manual`"
                 )
             screen = await detect_screen(page, self._sel)
@@ -289,7 +289,7 @@ class PasswordLoginFlow:
                 case Decision.SOLVE_CAPTCHA:
                     state.record_solve_attempt(snapshot)
                     _log.info(
-                        "Відповідь входу вимагає капчу — розв'язую слайдер",
+                        "Login response requires captcha; solving slider",
                         extra={"attempt": state.captcha_attempts},
                     )
                     await session.checkpoint("captcha_dialog")
@@ -300,7 +300,7 @@ class PasswordLoginFlow:
                     await self._handle_two_factor(page, human)
                 case Decision.RESUBMIT:
                     state.resubmits += 1
-                    _log.info("Після слайдера нового запиту немає — натискаю «Sign in» ще раз")
+                    _log.info('No new login request after slider; clicking "Sign in" again')
                     password = await page.query_selector(self._sel.password_input)
                     if password is not None:
                         await self._click_sign_in(page, human, password)
@@ -309,19 +309,19 @@ class PasswordLoginFlow:
                     raise self._risk_error(snapshot.verdict)
                 case Decision.FAIL_CAPTCHA:
                     raise CaptchaChallengeError(
-                        f"Слайдер не пройдено за {state.captcha_attempts} спроби. "
-                        "Спробуйте ручний вхід: `aliweb login <id> --headful --manual`"
+                        f"Slider was not solved after {state.captcha_attempts} attempts. "
+                        "Try manual login: `aliweb login <id> --headful --manual`"
                     )
                 case Decision.WAIT:
                     await asyncio.sleep(0.4)
 
     async def _solve_captcha_once(self, page: Page, human: HumanInput) -> None:
         solved = await self._slider.solve(page, human)
-        _log.info("Слайдер %s", "пройдено" if solved else "не пройдено")
+        _log.info("Slider %s", "solved" if solved else "not solved")
 
     async def _handle_two_factor(self, page: Page, human: HumanInput) -> None:
-        _log.warning("AliExpress вимагає код підтвердження (2FA)")
-        code = await self._two_factor.ask_code("Введіть код підтвердження з e-mail/SMS")
+        _log.warning("AliExpress requires a verification code (2FA)")
+        code = await self._two_factor.ask_code("Enter the verification code from email or SMS")
         if not code:
             return
         field = await page.query_selector(self._sel.two_factor_input)
@@ -335,7 +335,7 @@ class PasswordLoginFlow:
         else:
             await human.press_enter()
 
-    # ── допоміжне ──────────────────────────────────────────────────────────
+    # ── Helpers ────────────────────────────────────────────────────────────
     @staticmethod
     async def _visible(page: Page, selector: str) -> ElementHandle | None:
         element = await page.query_selector(selector)
@@ -346,10 +346,10 @@ class PasswordLoginFlow:
     @staticmethod
     def _risk_error(verdict: LoginVerdict | None) -> RiskControlError:
         raw = " ".join(verdict.items)[:200] if verdict else ""
-        _log.error("Вхід відхилено ризик-контролем", extra={"ret": raw})
+        _log.error("Login rejected by risk control", extra={"ret": raw})
         return RiskControlError(
-            "Вхід відхилено ризик-контролем AliExpress (RGV587), діалог капчі не з'явився. "
-            f"Рекомендована пауза: {RISK_COOLDOWN_HOURS} год. Або увійдіть вручну: "
+            "Login rejected by AliExpress risk control (RGV587); no captcha dialog appeared. "
+            f"Recommended cooldown: {RISK_COOLDOWN_HOURS} hours. Or log in manually: "
             "`aliweb login <id> --headful --manual`.",
             cooldown_hours=RISK_COOLDOWN_HOURS,
         )

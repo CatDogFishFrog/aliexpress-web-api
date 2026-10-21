@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "aliweb"
 version = "0.2.1"
-description = "Неофіційний AliExpress Web API на основі скрапінгу (patchright)"
+description = "Unofficial AliExpress Web API based on scraping (patchright)"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
@@ -42,13 +42,13 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "C4", "PIE", "RET", "RUF", "S", "T20", "ASYNC", "PTH", "TID"]
 ignore = [
-    "S101",   # assert дозволено в тестах
-    "RUF001", "RUF002", "RUF003",  # кирилиця в рядках/коментарях — це норма
+    "S101",   # assert is allowed in tests
+    "RUF001", "RUF002", "RUF003",  # Allow non-ASCII punctuation in strings and comments.
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S105", "S106", "S107", "S108", "S311", "T20", "ASYNC109", "ASYNC240", "RUF059"]
-"src/aliweb/cli/**" = ["T20"]   # print дозволено лише в CLI
+"src/aliweb/cli/**" = ["T20"]   # print is allowed only in the CLI
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"

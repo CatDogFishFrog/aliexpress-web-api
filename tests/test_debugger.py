@@ -1,4 +1,4 @@
-"""``debug open`` НЕ входить в акаунт: відкриває сторінку з наявною сесією або анонімно."""
+"""``debug open`` does not log in; it opens a page with the saved session or anonymously."""
 
 from __future__ import annotations
 
@@ -96,7 +96,7 @@ async def test_uses_stored_session_and_profile_without_any_login(
     assert result.account_id == AccountId("main") and result.dump_dir
     assert result.with_session and result.with_profile
     assert factory.opened[0]["storage_state"] == make_session("COOKIE").storage_state
-    assert factory.opened[0]["profile"] is stored  # те саме середовище, що й у скрапера
+    assert factory.opened[0]["profile"] is stored  # Same environment as the scraper.
     assert factory.page.visited == ["https://www.aliexpress.com/"]
 
 
@@ -105,17 +105,17 @@ async def test_account_without_session_uses_its_environment_but_never_logs_in(
     repo: MemoryRepository,
     active: MemoryActiveStore,
 ) -> None:
-    """Сценарій з логу: акаунт без сесії, а `debug open` чомусь намагався увійти."""
+    """Regression: debug open must not log in when the account has no session."""
     debugger, factory, _ = parts
-    repo.items[AccountId("main")] = make_account("main")  # є пароль, сесії й профілю немає
+    repo.items[AccountId("main")] = make_account("main")  # Has credentials but no session or profile.
     active.value = AccountId("main")
     result = await debugger.open_and_dump("https://www.aliexpress.com/")
     assert result.account_id == AccountId("main")
     assert not result.with_session and result.with_profile
     assert factory.opened[0]["storage_state"] is None
-    assert factory.opened[0]["profile"] is not None  # профіль створено й збережено
+    assert factory.opened[0]["profile"] is not None  # Profile is generated and saved.
     assert repo.items[AccountId("main")].profile is not None
-    assert factory.page.visited == ["https://www.aliexpress.com/"]  # лише запитана сторінка
+    assert factory.page.visited == ["https://www.aliexpress.com/"]  # Only the requested page was visited.
 
 
 async def test_anonymous_flag_is_a_plain_browser(
@@ -170,7 +170,7 @@ async def test_unknown_account_is_an_error(
 
 
 class TargetClosedError(Exception):
-    """Ім'я збігається з patchright._impl._errors.TargetClosedError (його не експортують публічно)."""
+    """Name matches patchright._impl._errors.TargetClosedError, which is not publicly exported."""
 
 
 def test_target_closed_detection_by_class_name() -> None:
@@ -179,7 +179,7 @@ def test_target_closed_detection_by_class_name() -> None:
 
 
 async def test_no_dump_attempted_when_window_was_closed() -> None:
-    """Лог користувача: TargetClosedError → 4 марні невдалі кроки дампу. Тепер дамп пропускається."""
+    """Regression: skip dump steps after TargetClosedError instead of producing four more failures."""
 
     class Diagnostics:
         called = False

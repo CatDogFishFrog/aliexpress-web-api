@@ -84,7 +84,7 @@ class TestUrls:
 
 class TestCatalogModels:
     def test_search_query_validation(self) -> None:
-        with pytest.raises(ValueError, match="порожній"):
+        with pytest.raises(ValueError, match="cannot be empty"):
             SearchQuery("   ")
         with pytest.raises(ValueError, match=">= 1"):
             SearchQuery("x", page=0)
@@ -100,7 +100,7 @@ class TestCatalogModels:
         simple = SimpleProduct(ref=ProductRef("https://aliexpress.com/item/5.html"), title="T")
         assert Product(summary=simple).ref == simple.ref
         assert simple.price is None and dict(simple.extra) == {}
-        _ = Decimal  # моделі не вимагають заповнення необов'язкових полів
+        _ = Decimal  # Models do not require optional fields to be populated.
 
 
 class TestLoginMode:
@@ -126,9 +126,9 @@ class TestLoginMode:
 
     def test_browser_choice_path_rules(self) -> None:
         with pytest.raises(InvalidLoginModeError):
-            BrowserChoice(BrowserKind.CUSTOM)  # шлях обов'язковий
+            BrowserChoice(BrowserKind.CUSTOM)  # Executable path is required.
         with pytest.raises(InvalidLoginModeError):
-            BrowserChoice(BrowserKind.CHROME, "/x")  # шлях лише для CUSTOM
+            BrowserChoice(BrowserKind.CHROME, "/x")  # Path is only valid for CUSTOM.
         assert str(BrowserChoice.custom("/x")) == "/x" and str(BrowserChoice()) == "chromium"
 
 

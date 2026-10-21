@@ -1,4 +1,4 @@
-"""Постачальник автентифікованих сторінок для скрапінгу (активний акаунт)."""
+"""Provide authenticated pages for scraping with the active account."""
 
 from __future__ import annotations
 
@@ -20,12 +20,12 @@ _log = logging.getLogger(__name__)
 
 
 class AuthenticatedPageProvider:
-    """Видає :class:`BrowserSession` з сесією АКТИВНОГО акаунта.
+    """Provide a :class:`BrowserSession` for the active account.
 
-    Гарантії:
-      * перед відкриттям сесія перевіряється/оновлюється (``AuthService.ensure_session``);
-      * роботи з одним акаунтом серіалізуються (asyncio.Lock на акаунт);
-      * після роботи оновлені cookie зберігаються назад у сховище (навіть при помилці).
+        Guarantees:
+            * verify or refresh the session before opening (``AuthService.ensure_session``);
+            * serialize operations per account using an ``asyncio.Lock``;
+            * persist updated cookies after use, even when an error occurs.
     """
 
     def __init__(
@@ -49,7 +49,7 @@ class AuthenticatedPageProvider:
         account_id = await self._accounts.require_active_id()
         async with self._locks[account_id]:
             session_state = await self._auth.ensure_session(account_id, headless=headless)
-            account = await self._accounts.get(account_id)  # ensure_session гарантує наявність профілю
+            account = await self._accounts.get(account_id)  # ensure_session guarantees a profile exists.
             async with self._factory.open(
                 session_state.storage_state, headless=headless, profile=account.profile
             ) as session:
@@ -59,7 +59,7 @@ class AuthenticatedPageProvider:
                     await self._persist(account_id, session)
 
     async def _persist(self, account_id: AccountId, session: BrowserSession) -> None:
-        """Best-effort: оновлені cookie → сховище. Збій не повинен маскувати результат/помилку."""
+        """Best-effort persistence of updated cookies; failures must not mask results or errors."""
         with contextlib.suppress(Exception):
             fresh = SessionState(storage_state=await session.storage_state(), captured_at=self._clock())
             account = await self._accounts.get(account_id)

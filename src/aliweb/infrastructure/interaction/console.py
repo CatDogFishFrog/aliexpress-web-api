@@ -1,4 +1,4 @@
-"""Інтерактивні запити через консоль (код 2FA)."""
+"""Interactive console prompts, including 2FA codes."""
 
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ from aliweb.domain.errors import TwoFactorRequiredError
 
 
 class ConsoleTwoFactorPrompt:
-    """Реалізує ``TwoFactorPrompt``: просить код у терміналі (введення приховане).
+    """Implement ``TwoFactorPrompt`` by requesting a code in the terminal with hidden input.
 
-    Без TTY (cron, CI, Docker без -it) піднімає :class:`TwoFactorRequiredError`.
-    Примітка: після таймауту потік із ``getpass`` лишається заблокованим до Enter —
-    це обмеження stdlib, для CLI-процесу, що завершується, несуттєво.
+    Raise :class:`TwoFactorRequiredError` when no TTY is available (cron, CI, or Docker without -it).
+    After a timeout, the ``getpass`` thread remains blocked until Enter is pressed; this standard
+    library limitation is acceptable for a CLI process that is about to exit.
     """
 
     def __init__(self, timeout_s: float = 120.0) -> None:
@@ -23,8 +23,8 @@ class ConsoleTwoFactorPrompt:
     async def ask_code(self, hint: str) -> str | None:
         if not sys.stdin.isatty():
             raise TwoFactorRequiredError(
-                "AliExpress вимагає код 2FA, а інтерактивне введення недоступне "
-                "(немає TTY). Виконайте вхід вручну: `aliweb login <id> --headful`."
+                "AliExpress requires a 2FA code, but interactive input is unavailable "
+                "(no TTY). Log in manually with `aliweb login <id> --headful`."
             )
         try:
             code = await asyncio.wait_for(
